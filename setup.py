@@ -12,8 +12,8 @@ setup(
             "fsr=cli:cli",
         ],
     },
-    author="Blondel"
-    author_email="", # Placeholder
+    author="Blondel Mondésir",
+    author_email="",
     description="A CLI tool to process congregation field service data from a JSON file.",
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
