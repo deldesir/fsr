@@ -5,8 +5,9 @@
 ## Features
 
 *   Load and parse service data from a structured JSON file.
+*   Auto-detects the main JSON data file (typically `hourglass-export.json`) if not specified.
 *   Generate monthly activity summary reports, detailing pioneer and publisher activity.
-*   Update existing CSV files with monthly service report data.
+*   Update existing CSV files with monthly service report data. The CSV file for update (e.g., `Descahos Rapò Sèvis.csv` or `FSGExtract.csv`) can also be auto-detected.
 *   Modular design, allowing for future expansion with new report types or export formats.
 
 ## Installation
@@ -21,28 +22,74 @@ pip install .
 The general command structure for `fsr` is:
 
 ```bash
-fsr --json-file <path_to_data.json> <command> <subcommand> [options]
+fsr [OPTIONS] COMMAND [ARGS]...
 ```
 
-You must always provide the path to your JSON data file using the `--json-file` option.
+### Main Option: JSON Data File
 
-### Examples:
+The `--json-file <path_to_data.json>` option specifies the path to your JSON data file. This option is **optional**.
+
+*   **If you provide the path** using `--json-file`, `fsr` will use that specific file.
+*   **If you do not provide the path**, `fsr` will attempt to auto-detect the JSON file. It searches for files named `hourglass-export.json` (or variants like `hourglass-export (1).json`, `hourglass-export (2).json`, etc.) in the following locations:
+    1.  The current directory.
+    2.  Your user's "Downloads" folder (and common international equivalents like "Téléchargements").
+*   When multiple matching files are found during auto-detection, `fsr` selects the one that appears to be the latest (e.g., `hourglass-export (2).json` over `hourglass-export (1).json`, or the most recently modified file if numbers are tied or absent).
+
+You would typically use the explicit `--json-file` option if your file is named differently or stored in a non-standard location.
+
+### Commands and Examples:
+
+Below are examples of common commands.
 
 **1. Generate a Monthly Activity Summary:**
 
-To generate a summary for a specific month (e.g., October 2023):
+This command generates a summary for a specific month (e.g., October 2023).
 
-```bash
-fsr --json-file path/to/your/data.json summary monthly-activity --month 2023-10
-```
+*   **With auto-detection of JSON file:**
+    ```bash
+    fsr summary monthly-activity --month 2023-10
+    ```
+    *(fsr will search for `hourglass-export.json` or similar.)*
+
+*   **Specifying the JSON file:**
+    ```bash
+    fsr --json-file path/to/your/data.json summary monthly-activity --month 2023-10
+    ```
 
 **2. Update a CSV Export:**
 
-To update an existing CSV file with data for a specific month:
+The `export update-csv` command updates an existing CSV file with data for a specific month.
+The `--csv-file <path_to_report.csv>` option for this command is also **optional**.
 
-```bash
-fsr --json-file path/to/your/data.json export update-csv --csv-file path/to/your/report.csv --month 2023-10
-```
+*   **If you provide the CSV file path** using `--csv-file`, `fsr` will use that specific file.
+*   **If you do not provide the CSV file path**, `fsr` will attempt to auto-detect it. It searches for files named `Descahos Rapò Sèvis.csv` or `FSGExtract.csv` (and their numbered variants like `Descahos Rapò Sèvis (1).csv`) in the current directory and your Downloads folder.
+*   Similar to JSON auto-detection, the latest version of the CSV file will be chosen if multiple are found.
+
+Here are various ways to use the `export update-csv` command:
+
+*   **Both JSON and CSV files specified:**
+    ```bash
+    fsr --json-file path/to/data.json export update-csv --csv-file path/to/report.csv --month 2023-10
+    ```
+
+*   **Only JSON file specified (CSV auto-detected):**
+    ```bash
+    fsr --json-file path/to/data.json export update-csv --month 2023-10
+    ```
+    *(fsr will search for `Descahos Rapò Sèvis.csv`, `FSGExtract.csv`, or similar for the CSV file.)*
+
+*   **Only CSV file specified (JSON auto-detected):**
+    ```bash
+    fsr export update-csv --csv-file path/to/report.csv --month 2023-10
+    ```
+    *(fsr will search for `hourglass-export.json` or similar for the JSON data.)*
+
+*   **Neither JSON nor CSV file specified (both auto-detected):**
+    ```bash
+    fsr export update-csv --month 2023-10
+    ```
+    *(fsr will search for both files in their respective default patterns and locations.)*
+
 
 ## JSON Data Structure
 
