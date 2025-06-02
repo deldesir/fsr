@@ -5,9 +5,9 @@
 ## Features
 
 *   Load and parse service data from a structured JSON file.
-*   Auto-detects the main JSON data file if not specified.
+*   Auto-detects the main JSON data file if not specified, with options to guide detection.
 *   Generate monthly activity summary reports, detailing pioneer and publisher activity.
-*   Export service data to a new CSV file, providing a comprehensive view of activity across all months and publishers in the dataset.
+*   Export service data to a new CSV file, providing a comprehensive view of activity across all months and publishers in the dataset. Output filename can be specified or auto-generated.
 *   Modular design, allowing for future expansion with new report types or export formats.
 
 ## Installation
@@ -45,17 +45,23 @@ The general command structure for `fsr` is:
 fsr [OPTIONS] COMMAND [ARGS]...
 ```
 
-### Main Option: JSON Data File
+### Main Options for JSON Data Input
 
-The `--json-file <path_to_data.json>` option specifies the path to your JSON data file. This option is **optional**.
+The primary way to provide data to `fsr` is via a JSON file.
 
-*   **If you provide the path** using `--json-file`, `fsr` will use that specific file.
-*   **If you do not provide the path**, `fsr` will attempt to auto-detect the JSON file. It searches for files named `hourglass-export.json` (or variants like `hourglass-export (1).json`, `hourglass-export (2).json`, etc.) in the following locations:
-    1.  The current directory.
-    2.  Your user's "Downloads" folder (and common international equivalents like "Téléchargements").
-*   When multiple matching files are found during auto-detection, `fsr` selects the one that appears to be the latest (e.g., `hourglass-export (2).json` over `hourglass-export (1).json`, or the most recently modified file if numbers are tied or absent).
+*   **`--json-file <path_to_data.json>`**: Specifies the path to your JSON data file. This option is **optional**.
+    *   If you provide the path, `fsr` will use that specific file.
+    *   If you do not provide the path, `fsr` will attempt to auto-detect the JSON file.
 
-You would typically use the explicit `--json-file` option if your file is named differently or stored in a non-standard location.
+*   **Auto-Detection Behavior (when `--json-file` is omitted):**
+    *   `fsr` searches for files like `hourglass-export.json` (or variants with numbers, e.g., `hourglass-export (1).json`) in the current directory and your user's "Downloads" folder.
+    *   When multiple matching files are found, `fsr` selects the one that appears to be the latest.
+    *   **`--json-type <type>`**: You can guide the auto-detection by specifying the type of JSON file.
+        *   Supported types: `hourglass` (default). This corresponds to looking for "hourglass-export\*.json" files.
+        *   Example: `fsr --json-type hourglass summary monthly-activity --month 2023-10`
+        *   This option is ignored if `--json-file` is explicitly provided.
+
+You would typically use the explicit `--json-file` option if your file is named differently than what auto-detection expects or if it's stored in a non-standard location.
 
 ### Commands and Examples:
 
@@ -88,12 +94,10 @@ The `fsr summary monthly-activity --month YYYY-MM` command generates a console-b
         *   Other values (e.g., `null`, empty string, 'Publisher') -> 'Pwoklamatè ki pa Pyonye'.
 
 *   **Example Usage:**
-    *   With auto-detection of JSON file:
+    *   With auto-detection of JSON file (defaulting to `hourglass` type):
         ```bash
         fsr summary monthly-activity --month 2023-10
         ```
-        *(fsr will search for `hourglass-export.json` or similar.)*
-
     *   Specifying the JSON file:
         ```bash
         fsr --json-file path/to/your/data.json summary monthly-activity --month 2023-10
@@ -105,12 +109,20 @@ The `export field-service` command creates a new CSV file containing a comprehen
 
 *   **Command Structure:**
     ```bash
-    fsr export field-service --csv-file <PATH_TO_NEW_CSV_FILE>
+    fsr export field-service [OPTIONS]
     ```
-*   **`--csv-file <PATH_TO_NEW_CSV_FILE>` Option:**
-    *   This option is **required**.
-    *   You must specify the full path (including filename, e.g., `path/to/my_new_report.csv`) where the new CSV file will be created.
-    *   Auto-detection of the output CSV path is not supported for this command.
+*   **Output Filename Option (`--csv-file <path/to/your/file.csv>`):**
+    *   This option is now **optional**.
+    *   If you provide a path (e.g., `--csv-file my_export.csv`), that specific path will be used.
+    *   **Default Filename**: If `--csv-file` is omitted, a default filename will be automatically generated in your current working directory.
+        *   The format is: `APP-TARGET_INPUT-JSON-FILENAME-STEM_YYYYMMDD.csv`.
+        *   Example: If your input JSON file (after resolving paths) was `hourglass-export (1).json` and the app target is `NWScheduler` (the default), the output might be `NWScheduler_hourglass-export (1)_20231027.csv`.
+
+*   **Application Target Option (`--app-target <target_app>`):**
+    *   Use this option to specify the target application for the CSV export.
+    *   This primarily influences the default filename if `--csv-file` is not provided. It can also serve as metadata for other tools consuming the CSV.
+    *   Supported targets: `NWScheduler` (default).
+    *   Example: `fsr export field-service --app-target NWScheduler` (often redundant if it's the default, but useful if other targets are added).
 
 *   **Output Rows:**
     *   For every unique month found across all reports in the input JSON data, a row is generated for *every publisher* listed in the `publishers` section of the JSON.
@@ -121,21 +133,27 @@ The `export field-service` command creates a new CSV file containing a comprehen
     The generated CSV file will have the following columns:
     `Date`, `FirstName`, `LastName`, `SharedInMinistry`, `BibleStudies`, `AP`, `Hours`, `Credit`, `Remarks`
 
-*   **Key Field Logic Explanation:**
-    *   `Date`: Formatted as `YYYY-MM` (e.g., "2023-10").
-    *   `SharedInMinistry`: `True` if the report for that month indicates activity (positive `minutes` or `studies`). However, if the `has_reported_field_service` key is explicitly set to `false` in the source JSON for that specific report, `SharedInMinistry` will be `False`, overriding any inference from minutes or studies. Otherwise, it's `False`.
-    *   `AP` (Auxiliary Pioneer): `True` if `SharedInMinistry` is `True` AND the `pioneer` status in the report for that month is exactly `'Auxiliary'`. Otherwise `False`.
-    *   `Hours`: Calculated from `minutes` in the report (`minutes // 60`). Shown as a string representation of the whole number only if `SharedInMinistry` is `True` and the calculated hours value is `> 0`. Otherwise, it's an empty string.
-    *   `BibleStudies`: Shows the number of studies (as a string) if `SharedInMinistry` is `True` and the `studies` value from the report is `> 0`. Otherwise, it's an empty string.
-    *   `Credit`: Shows credit hours (as a string) if `SharedInMinistry` is `True` and the `credithours` value from the report is numerically `> 0`. Whole numbers are shown as integers (e.g., "5"), floats as floats (e.g., "1.5"). Otherwise, it's an empty string.
-    *   `Remarks`: Shows remarks from the report if present and not just whitespace (after stripping). Otherwise, it's an empty string.
+*   **Key Field Logic Explanation (same as before, summarized):**
+    *   `Date`: `YYYY-MM`.
+    *   `SharedInMinistry`: Based on activity and `has_reported_field_service` flag.
+    *   `AP` (Auxiliary Pioneer): `True` if `SharedInMinistry` and `pioneer` status is `'Auxiliary'`.
+    *   `Hours`, `BibleStudies`, `Credit`: Show values if `SharedInMinistry` is `True` and data is positive/present.
+    *   `Remarks`: Shown if present.
 
 *   **Example Usage:**
-    *   **With auto-detection of JSON file:**
+    *   **Auto-detect JSON, generate default CSV name for NWScheduler:**
+        ```bash
+        fsr export field-service
+        ```
+    *   **Auto-detect JSON, specify CSV output file:**
         ```bash
         fsr export field-service --csv-file path/to/my_new_report.csv
         ```
-    *   **Specifying the JSON file:**
+    *   **Specify JSON input, generate default CSV for a specific app target:**
+        ```bash
+        fsr --json-file path/to/data.json export field-service --app-target NWScheduler
+        ```
+    *   **Specify both JSON input and CSV output:**
         ```bash
         fsr --json-file path/to/data.json export field-service --csv-file path/to/my_new_report.csv
         ```
