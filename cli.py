@@ -4,6 +4,7 @@ Main CLI entry point for the Congregation Reporter.
 import click
 import sys
 import json # Required for json.JSONDecodeError
+from typing import Optional
 
 from core.data_loader import load_and_prepare_data, CongregationData
 from core.file_finder import find_json_file
@@ -71,5 +72,5 @@ if __name__ == "__main__":
     # The type hint for json_file needs to be Optional[str] for the cli function
     # but click itself when running __main__ might not pass None if default is not specified at option level
     # However, with default=None, it should be fine.
-    from typing import Optional
+    # from typing import Optional # No longer needed here as it's at the top
     cli(obj={}) # type: ignore
