@@ -48,9 +48,9 @@ def export_csv_command(ctx: click.Context, csv_filepath: str):
     output_rows = []
 
     for publisher in cong_data.publishers_list:
-        publisher_id = publisher['id']
-        first_name = publisher['firstName']
-        last_name = publisher['lastName']
+        publisher_id = publisher['id'] # Assuming 'id' is guaranteed by data loading
+        first_name = publisher.get('firstname', '')
+        last_name = publisher.get('lastname', '')
         publisher_has_any_reports = False
 
         # Iterate through all reports to find those matching this publisher
