@@ -12,15 +12,15 @@ setup(
             "fsr=cli:cli",
         ],
     },
-    author="Your Name", # Placeholder
-    author_email="your.email@example.com", # Placeholder
+    author="Blondel"
+    author_email="", # Placeholder
     description="A CLI tool to process congregation field service data from a JSON file.",
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
-    url="https://github.com/yourusername/fsr", # Placeholder
+    url="https://github.com/deldesir/fsr",
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License", # Assuming MIT from typical open source
+        "License :: OSI Approved :: GPL-3.0",
         "Operating System :: OS Independent",
     ],
     python_requires='>=3.6',
