@@ -15,7 +15,7 @@ def export_group():
     """Commands for exporting data."""
     pass
 
-@export_group.command('export-csv')
+@export_group.command('field-service')
 @click.option(
     '--csv-file',
     'csv_filepath',
