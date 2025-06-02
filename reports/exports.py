@@ -4,8 +4,8 @@ Commands for exporting congregation data.
 import click
 import csv
 import os
-from congregation_reporter.core.data_loader import CongregationData
-from congregation_reporter.core.utils import get_publisher_role, parse_year_month
+from core.data_loader import CongregationData
+from core.utils import get_publisher_role, parse_year_month
 from ..core.constants import ROLE_AUXILIARY_PIONEER, ALL_PIONEER_ROLES
 
 @click.group('export')

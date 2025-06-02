@@ -2,8 +2,8 @@
 Commands for generating summary reports.
 """
 import click
-from congregation_reporter.core.data_loader import CongregationData
-from congregation_reporter.core.utils import get_publisher_role, format_minutes_to_hr_min, parse_year_month
+from core.data_loader import CongregationData
+from core.utils import get_publisher_role, format_minutes_to_hr_min, parse_year_month
 from ..core.constants import ALL_PIONEER_ROLES, ROLE_NON_PIONEER
 
 @click.group('summary')
