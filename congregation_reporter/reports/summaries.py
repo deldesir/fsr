@@ -4,18 +4,19 @@ Commands for generating summary reports.
 import click
 from congregation_reporter.core.data_loader import CongregationData
 from congregation_reporter.core.utils import get_publisher_role, format_minutes_to_hr_min, parse_year_month
+from ..core.constants import ALL_PIONEER_ROLES, ROLE_NON_PIONEER
 
 @click.group('summary')
 def summary_group():
     """Commands for generating summary reports."""
     pass
 
-@summary_group.command('haitian')
+@summary_group.command('monthly-activity')
 @click.option('--month', 'target_month_str', required=True, help="The month for the report in YYYY-MM format.")
 @click.pass_context
-def haitian_report(ctx: click.Context, target_month_str: str):
+def monthly_activity_report(ctx: click.Context, target_month_str: str):
     """
-    Generates the Haitian Creole summary report for a specific month.
+    Generates a monthly activity summary report.
     """
     if 'cong_data' not in ctx.obj or not isinstance(ctx.obj['cong_data'], CongregationData):
         click.echo("Error: Congregation data not loaded. Run with --json-file option.", err=True)
@@ -60,12 +61,12 @@ def haitian_report(ctx: click.Context, target_month_str: str):
             except (ValueError, TypeError):
                 studies = 0
 
-            if role in ["Auxiliary Pioneer", "Regular Pioneer", "Special Pioneer"]:
+            if role in ALL_PIONEER_ROLES:
                 if report.get('has_reported_field_service', False): # Only count if they reported service
                     pioneer_total_minutes += minutes
                     pioneer_total_studies += studies
                     pioneer_ids_reporting.add(pub_id)
-            elif role == "Non-Pioneer": # Includes unbaptized publishers if they are in the system without a specific role
+            elif role == ROLE_NON_PIONEER: # Includes unbaptized publishers if they are in the system without a specific role
                 if report.get('has_reported_field_service', False): # Only count if they reported service
                     # Non-pioneer minutes are not counted for this specific Haitian summary
                     publisher_total_studies += studies
@@ -74,29 +75,31 @@ def haitian_report(ctx: click.Context, target_month_str: str):
 
     pioneer_reporter_count = len(pioneer_ids_reporting)
     publisher_reporter_count = len(publisher_ids_reporting)
+    formatted_pioneer_hours = format_minutes_to_hr_min(pioneer_total_minutes)
 
     # Outputting the report
-    click.echo("Rapò Rezime Kreyòl Ayisyen")
+    click.echo("Monthly Activity Summary Report")
     click.echo("-----------------------------")
-    click.echo(f"Mwa Rapò: {target_month_str}")
-    click.echo(f"Dat Rapò Fèt: {click.DateTime().strftime('%Y-%m-%d %H:%M')}") # Example, could be more sophisticated
+    click.echo(f"Month: {target_month_str}")
+    # Using a generic "Report Generated:" timestamp, can be adjusted if a specific "data as of" date is available
+    click.echo(f"Report Generated: {click.DateTime().strftime('%Y-%m-%d %H:%M')}")
     click.echo("-----------------------------")
-    click.echo("PYONYE (Oksilyè, Pèmanan, Espesyal)")
+    click.echo("--- Pioneers (Auxiliary, Regular, Special) ---")
     click.echo("-----------------------------")
-    click.echo(f"Kantite Pyonye ki Bay Rapò: {pioneer_reporter_count}")
-    click.echo(f"Total Lè (an èdtan): {format_minutes_to_hr_min(pioneer_total_minutes)}")
-    click.echo(f"Total Etid Biblik (Pyonye): {pioneer_total_studies}")
+    click.echo(f"Number of Pioneers Reporting: {pioneer_reporter_count}")
+    click.echo(f"Total Hours: {formatted_pioneer_hours}")
+    click.echo(f"Total Bible Studies (Pioneers): {pioneer_total_studies}")
     click.echo("-----------------------------")
-    click.echo("PWOKLAMATÈ (ki pa Pyonye)")
+    click.echo("--- Publishers (Non-Pioneer) ---")
     click.echo("-----------------------------")
-    click.echo(f"Kantite Pwoklamatè ki Bay Rapò: {publisher_reporter_count}")
-    click.echo(f"Total Etid Biblik (Pwoklamatè): {publisher_total_studies}")
+    click.echo(f"Number of Publishers Reporting: {publisher_reporter_count}")
+    click.echo(f"Total Bible Studies (Publishers): {publisher_total_studies}")
     click.echo("-----------------------------")
-    click.echo(f"Total Etid Biblik (Kongregasyon): {pioneer_total_studies + publisher_total_studies}")
+    click.echo(f"Total Congregation Bible Studies: {pioneer_total_studies + publisher_total_studies}")
     click.echo("-----------------------------")
 
     # Additional check for clarity:
     if not cong_data.reports_by_publisher_month_year:
-        click.echo("\nNòt: Pa gen okenn rapò ki anrejistre nan done yo.")
+        click.echo("\nNote: No reports recorded in the data.")
     elif pioneer_reporter_count == 0 and publisher_reporter_count == 0:
-        click.echo(f"\nNòt: Pa gen okenn rapò ki jwenn pou mwa {target_month_str}.")
+        click.echo(f"\nNote: No reports found for month {target_month_str}.")

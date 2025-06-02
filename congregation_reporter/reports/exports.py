@@ -6,6 +6,7 @@ import csv
 import os
 from congregation_reporter.core.data_loader import CongregationData
 from congregation_reporter.core.utils import get_publisher_role, parse_year_month
+from ..core.constants import ROLE_AUXILIARY_PIONEER, ALL_PIONEER_ROLES
 
 @click.group('export')
 def export_group():
@@ -120,12 +121,12 @@ def update_csv_command(ctx: click.Context, csv_filepath_str: str, target_month_s
 
 
                 updated_row['SharedInMinistry'] = True # Or "Yes" / "No" if preferred string values
-                updated_row['AP'] = (role == "Auxiliary Pioneer") # True / False
+                updated_row['AP'] = (role == ROLE_AUXILIARY_PIONEER) # True / False
 
-                if role in ["Auxiliary Pioneer", "Regular Pioneer", "Special Pioneer"]:
+                if role in ALL_PIONEER_ROLES:
                     updated_row['Hours'] = minutes // 60 # Integer hours
-                else: # Non-Pioneer
-                    updated_row['Hours'] = 0 # As per instruction: "minutes are ignored for non-pioneers"
+                else: # Non-Pioneer (or any role not in ALL_PIONEER_ROLES)
+                    updated_row['Hours'] = 0
 
                 updated_row['BibleStudies'] = studies
                 updated_row['Credit'] = credit_val

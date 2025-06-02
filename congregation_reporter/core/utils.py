@@ -1,6 +1,10 @@
 """
 Utility functions for the Congregation Reporter project.
 """
+from .constants import (
+    ROLE_NON_PIONEER, ROLE_AUXILIARY_PIONEER, ROLE_REGULAR_PIONEER, ROLE_SPECIAL_PIONEER,
+    PIONEER_KEYWORD_AUXILIARY, PIONEER_KEYWORD_REGULAR, PIONEER_KEYWORD_SPECIAL
+)
 
 def get_publisher_role(report_pioneer_field: str | None) -> str:
     """
@@ -11,22 +15,22 @@ def get_publisher_role(report_pioneer_field: str | None) -> str:
                               Can be None or an empty string.
 
     Returns:
-        A string identifying the role: "Non-Pioneer", "Auxiliary Pioneer",
-        "Regular Pioneer", or "Special Pioneer".
+        A string identifying the role: ROLE_NON_PIONEER, ROLE_AUXILIARY_PIONEER,
+        ROLE_REGULAR_PIONEER, or ROLE_SPECIAL_PIONEER.
     """
     if not report_pioneer_field:
-        return "Non-Pioneer"
+        return ROLE_NON_PIONEER
 
     field_lower = report_pioneer_field.lower()
 
-    if "auxiliary" in field_lower:
-        return "Auxiliary Pioneer"
-    elif "regular" in field_lower:
-        return "Regular Pioneer"
-    elif "special" in field_lower:
-        return "Special Pioneer"
+    if PIONEER_KEYWORD_AUXILIARY in field_lower:
+        return ROLE_AUXILIARY_PIONEER
+    elif PIONEER_KEYWORD_REGULAR in field_lower:
+        return ROLE_REGULAR_PIONEER
+    elif PIONEER_KEYWORD_SPECIAL in field_lower:
+        return ROLE_SPECIAL_PIONEER
     else:
-        return "Non-Pioneer"
+        return ROLE_NON_PIONEER
 
 
 def format_minutes_to_hr_min(minutes: int | None) -> str:

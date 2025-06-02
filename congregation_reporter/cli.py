@@ -17,10 +17,10 @@ from congregation_reporter.core.data_loader import load_and_prepare_data, Congre
 @click.pass_context
 def cli(ctx: click.Context, json_file: str):
     """
-    Congregation Reporter CLI.
+    Field Service Reporter (fsr) CLI.
 
-    This tool processes congregation data from a JSON file to generate
-    various reports and exports.
+    This tool processes JSON data to generate field service activity
+    reports and exports.
     """
     ctx.ensure_object(dict) # Ensure ctx.obj exists and is a dict
 
