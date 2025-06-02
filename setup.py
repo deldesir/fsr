@@ -4,6 +4,7 @@ setup(
     name="fsr",
     version="0.1.0",
     packages=find_packages(include=['core', 'reports']),
+    py_modules=['cli'],
     install_requires=[
         "click",
     ],
