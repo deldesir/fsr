@@ -5,7 +5,7 @@ import click
 import sys
 import json # Required for json.JSONDecodeError
 
-from congregation_reporter.core.data_loader import load_and_prepare_data, CongregationData
+from core.data_loader import load_and_prepare_data, CongregationData
 
 @click.group()
 @click.option(
