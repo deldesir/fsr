@@ -43,7 +43,7 @@ class TestExportCsvCommandFinal(unittest.TestCase):
             {'id': 'pub_no_reports', 'firstname': 'NoReport', 'lastname': 'User'}
         ]
         self.mock_cong_data.reports_by_publisher_month_year = {} # No reports for anyone
-
+        
         with tempfile.TemporaryDirectory() as temp_dir:
             result, csv_filepath = self._run_command(temp_dir)
             self.assertEqual(result.exit_code, 0, f"Command failed: {result.output}")
@@ -71,9 +71,9 @@ class TestExportCsvCommandFinal(unittest.TestCase):
     def test_publisher_name_key_variations_with_reports(self):
         """Name key variations for publishers *who have reports*."""
         self.mock_cong_data.publishers_list = [
-            {'id': 'std_lc', 'firstname': 'John', 'lastname': 'Doe'},
-            {'id': 'no_fn', 'lastname': 'Smith'},
-            {'id': 'no_ln', 'firstname': 'Jane'},
+            {'id': 'std_lc', 'firstname': 'John', 'lastname': 'Doe'},      
+            {'id': 'no_fn', 'lastname': 'Smith'},                           
+            {'id': 'no_ln', 'firstname': 'Jane'},          
             {'id': 'camel_keys', 'firstName': 'Alice', 'lastName': 'Wonder'} # Code expects lowercase
         ]
         # Each publisher needs at least one report to be included
@@ -109,27 +109,27 @@ class TestExportCsvCommandFinal(unittest.TestCase):
             # p1: AuxiliaryP One
             ('p1', 2023, 9): {'has_reported_field_service': True, 'pioneer': 'Auxiliary', 'minutes': 1200, 'studies': 3, 'credithours': 0, 'remarks': 'AP Full Month'}, # Credit 0 -> ''
             ('p1', 2023, 10): {'has_reported_field_service': True, 'pioneer': 'Auxiliary', 'minutes': 30, 'studies': 0, 'credithours': 5}, # <1hr, 0 studies
-
+            
             # p2: RegularP Two
             ('p2', 2023, 9): {'has_reported_field_service': True, 'pioneer': 'Regular', 'minutes': 3000, 'studies': None, 'credithours': "2.5", 'remarks': 'RP good month'},
-
+            
             # p3: PublisherF Three (non-pioneer)
-            ('p3', 2023, 9): {'has_reported_field_service': True, 'pioneer': None, 'minutes': 120, 'studies': 1, 'credithours': 0},
-            ('p3', 2023, 10): {'has_reported_field_service': True, 'pioneer': 'Publisher', 'minutes': 0, 'studies': 0, 'credithours': 0},
-
+            ('p3', 2023, 9): {'has_reported_field_service': True, 'pioneer': None, 'minutes': 120, 'studies': 1, 'credithours': 0}, 
+            ('p3', 2023, 10): {'has_reported_field_service': True, 'pioneer': 'Publisher', 'minutes': 0, 'studies': 0, 'credithours': 0}, 
+            
             # p4: NoServiceP Four (has_reported_field_service: False)
             ('p4', 2023, 9): {'has_reported_field_service': False, 'pioneer': 'Auxiliary', 'minutes': 600, 'studies': 2, 'credithours': 5, 'remarks': 'Specific Comment When Not Sharing'},
             ('p4', 2023, 10): {'has_reported_field_service': False, 'pioneer': None, 'remarks': "   "}, # Remarks only whitespace
-
+            
             # p5: MiscP Five
-            ('p5', 2023, 9): {'has_reported_field_service': True, 'pioneer': 'Special', 'minutes': None, 'studies': 5, 'credithours': "10"},
+            ('p5', 2023, 9): {'has_reported_field_service': True, 'pioneer': 'Special', 'minutes': None, 'studies': 5, 'credithours': "10"}, 
         }
 
         with tempfile.TemporaryDirectory() as temp_dir:
             result, csv_filepath = self._run_command(temp_dir)
             self.assertEqual(result.exit_code, 0, f"Command failed: {result.output}")
             _, rows = self._read_csv_data(csv_filepath)
-
+            
             # Expected rows: p1(2), p2(1), p3(2), p4(2), p5(1) = 8 rows. p6 is omitted.
             self.assertEqual(len(rows), 8)
 
@@ -145,7 +145,7 @@ class TestExportCsvCommandFinal(unittest.TestCase):
             p2_rows = get_rows('RegularP')
             self.assertEqual(len(p2_rows), 1)
             self.assertEqual(p2_rows[0]['Date'], '2023-09'); self.assertEqual(p2_rows[0]['SharedInMinistry'], 'True'); self.assertEqual(p2_rows[0]['AP'], 'False'); self.assertEqual(p2_rows[0]['Hours'], '50'); self.assertEqual(p2_rows[0]['BibleStudies'], ''); self.assertEqual(p2_rows[0]['Credit'], '2.5'); self.assertEqual(p2_rows[0]['Remarks'], 'RP good month')
-
+            
             # P3: PublisherF Three
             p3_rows = get_rows('PublisherF')
             self.assertEqual(len(p3_rows), 2)

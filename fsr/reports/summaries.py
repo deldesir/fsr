@@ -3,9 +3,11 @@ Commands for generating summary reports.
 """
 import click
 import datetime
+from collections import defaultdict 
 from fsr.core.data_loader import CongregationData
-from fsr.core.utils import get_publisher_role, format_minutes_to_hr_min, parse_year_month
-from fsr.core.constants import ALL_PIONEER_ROLES, ROLE_NON_PIONEER
+from fsr.core.utils import parse_year_month
+# Unused imports get_publisher_role, format_minutes_to_hr_min, 
+# ALL_PIONEER_ROLES, ROLE_NON_PIONEER were here.
 
 @click.group('summary')
 def summary_group():
@@ -17,12 +19,12 @@ def summary_group():
 @click.pass_context
 def monthly_activity_report(ctx: click.Context, target_month_str: str):
     """
-    Generates a monthly activity summary report.
+    Generates a monthly activity summary report in French/Haitian Creole.
     """
     if 'cong_data' not in ctx.obj or not isinstance(ctx.obj['cong_data'], CongregationData):
         click.echo("Error: Congregation data not loaded. Run with --json-file option.", err=True)
         ctx.abort()
-        return # Should be unreachable due to abort, but good for linters
+        return
 
     cong_data: CongregationData = ctx.obj['cong_data']
 
@@ -31,76 +33,125 @@ def monthly_activity_report(ctx: click.Context, target_month_str: str):
     except ValueError as e:
         click.echo(f"Error: Invalid month format. {e}", err=True)
         ctx.abort()
-        return # Should be unreachable
+        return
 
-    pioneer_total_minutes = 0
-    pioneer_total_studies = 0
-    publisher_total_studies = 0
-    pioneer_ids_reporting = set()
-    publisher_ids_reporting = set()
+    # Initialize Summary Data Structures
+    summary_data = {
+        'pwoklamatè ki pa pyonye': defaultdict(int),
+        'pyonye oksilyè': defaultdict(int),
+        'pyonye pèmanan': defaultdict(int),
+        'pyonye espesyal': defaultdict(int)
+    }
+    reporting_publishers_by_category = {
+        'pwoklamatè ki pa pyonye': set(),
+        'pyonye oksilyè': set(),
+        'pyonye pèmanan': set(),
+        'pyonye espesyal': set()
+    }
 
+    # Refactor Report Processing Loop
     for (pub_id, r_year, r_month), report in cong_data.reports_by_publisher_month_year.items():
-        if r_year == target_year and r_month == target_month:
-            # publisher_details = cong_data.publishers_by_id.get(pub_id) # Not strictly needed for this report
-            # if not publisher_details:
-            #     click.echo(f"Warning: Publisher ID {pub_id} from report not found in publisher list. Skipping report.", err=True)
-            #     continue
+        if not (r_year == target_year and r_month == target_month):
+            continue
 
-            # The 'pioneer' field in the report itself should determine role for that month's activity
-            role = get_publisher_role(report.get('pioneer'))
-            minutes = report.get('minutes') if report.get('has_reported_field_service', False) else 0
-            studies = report.get('studies') if report.get('has_reported_field_service', False) else 0
+        # Infer has_reported_service and get current_minutes, current_studies
+        minutes_raw = report.get('minutes')
+        studies_raw = report.get('studies')
+        # Placements and videos not considered for has_reported_service for now as per instruction
 
-            # Ensure minutes and studies are integers, default to 0 if None or invalid
+        has_reported_service = False
+        current_minutes = 0
+        current_studies = 0
+
+        if minutes_raw is not None:
             try:
-                minutes = int(minutes) if minutes is not None else 0
+                current_minutes = int(minutes_raw)
+                if current_minutes < 0: current_minutes = 0 # Treat negative as zero
+                if current_minutes > 0:
+                    has_reported_service = True
             except (ValueError, TypeError):
-                minutes = 0
-
+                current_minutes = 0
+        
+        if studies_raw is not None:
             try:
-                studies = int(studies) if studies is not None else 0
+                current_studies = int(studies_raw)
+                if current_studies < 0: current_studies = 0 # Treat negative as zero
+                if current_studies > 0:
+                    has_reported_service = True 
             except (ValueError, TypeError):
-                studies = 0
+                current_studies = 0
+        
+        # If explicitly marked as not sharing, override inference
+        if report.get('has_reported_field_service') == False: # Check for explicit False
+            has_reported_service = False
+            # Reset potentially inferred values if has_reported_field_service is explicitly False
+            current_minutes = 0
+            current_studies = 0
+            # Note: Credit hours are not part of this summary, so not reset here.
 
-            if role in ALL_PIONEER_ROLES:
-                if report.get('has_reported_field_service', False): # Only count if they reported service
-                    pioneer_total_minutes += minutes
-                    pioneer_total_studies += studies
-                    pioneer_ids_reporting.add(pub_id)
-            elif role == ROLE_NON_PIONEER: # Includes unbaptized publishers if they are in the system without a specific role
-                if report.get('has_reported_field_service', False): # Only count if they reported service
-                    # Non-pioneer minutes are not counted for this specific Haitian summary
-                    publisher_total_studies += studies
-                    publisher_ids_reporting.add(pub_id)
-            # else: role is "Unknown" or something else, ignore. Or could add a warning.
+        if not has_reported_service:
+            continue 
 
-    pioneer_reporter_count = len(pioneer_ids_reporting)
-    publisher_reporter_count = len(publisher_ids_reporting)
-    formatted_pioneer_hours = format_minutes_to_hr_min(pioneer_total_minutes)
+        # Categorize Publisher
+        pioneer_status_from_report = report.get('pioneer')
+        category_key = ''
+        if pioneer_status_from_report == 'Auxiliary':
+            category_key = 'pyonye oksilyè'
+        elif pioneer_status_from_report == 'Regular':
+            category_key = 'pyonye pèmanan'
+        elif pioneer_status_from_report == 'Special':
+            category_key = 'pyonye espesyal'
+        else: 
+            category_key = 'pwoklamatè ki pa pyonye'
+        
+        # Aggregate Data
+        summary_data[category_key]['minutes'] += current_minutes
+        summary_data[category_key]['studies'] += current_studies
+        reporting_publishers_by_category[category_key].add(pub_id)
 
-    # Outputting the report
-    click.echo("Monthly Activity Summary Report")
-    click.echo("-----------------------------")
-    click.echo(f"Month: {target_month_str}")
-    # Using a generic "Report Generated:" timestamp, can be adjusted if a specific "data as of" date is available
-    click.echo(f"Report Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    click.echo("-----------------------------")
-    click.echo("--- Pioneers (Auxiliary, Regular, Special) ---")
-    click.echo("-----------------------------")
-    click.echo(f"Number of Pioneers Reporting: {pioneer_reporter_count}")
-    click.echo(f"Total Hours: {formatted_pioneer_hours}")
-    click.echo(f"Total Bible Studies (Pioneers): {pioneer_total_studies}")
-    click.echo("-----------------------------")
-    click.echo("--- Publishers (Non-Pioneer) ---")
-    click.echo("-----------------------------")
-    click.echo(f"Number of Publishers Reporting: {publisher_reporter_count}")
-    click.echo(f"Total Bible Studies (Publishers): {publisher_total_studies}")
-    click.echo("-----------------------------")
-    click.echo(f"Total Congregation Bible Studies: {pioneer_total_studies + publisher_total_studies}")
+    # Prepare Data for Printing (After Loop)
+    for cat_name_loop, cat_data_loop in summary_data.items():
+        cat_data_loop['count'] = len(reporting_publishers_by_category[cat_name_loop])
+        # Ensure minutes is an int before division
+        cat_data_loop['hours_display'] = int(cat_data_loop.get('minutes', 0)) // 60
+
+
+    # Helper function for printing (defined within or accessible)
+    def print_category_summary(p_category_name, p_data, p_month_num, p_year_num):
+        # Convert month number to month name if desired, or use number
+        # For this example, directly using the number as in YYYY-MM format
+        month_str = f"{p_month_num:02d}"
+        click.echo(f"\n*Rapò pou {p_category_name.title()} ({month_str}-{p_year_num})*")
+        # Only print hours for pioneer categories as per original logic implied
+        if p_category_name != 'pwoklamatè ki pa pyonye':
+            click.echo(f"Total Lè: {p_data.get('hours_display', 0)}")
+        click.echo(f"Total Etid: {p_data.get('studies', 0)}") # Use .get for safety
+        click.echo(f"_Te gen {p_data.get('count', 0)} {p_category_name.lower()} ki te bay rapò pou mwa sa._")
+
+    # Refactor Printing Section
+    click.echo(click.style("Rezime Rapò Aktivite Mansyèl", bold=True))
+    # Use target_month_str for display as it's already in YYYY-MM
+    click.echo(f"Pou Mwa: {target_month_str}") 
+    click.echo(f"Rapò kreye: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
     click.echo("-----------------------------")
 
-    # Additional check for clarity:
-    if not cong_data.reports_by_publisher_month_year:
-        click.echo("\nNote: No reports recorded in the data.")
-    elif pioneer_reporter_count == 0 and publisher_reporter_count == 0:
-        click.echo(f"\nNote: No reports found for month {target_month_str}.")
+    print_category_summary('pwoklamatè ki pa pyonye', summary_data['pwoklamatè ki pa pyonye'], target_month, target_year)
+    print_category_summary('pyonye oksilyè', summary_data['pyonye oksilyè'], target_month, target_year)
+    print_category_summary('pyonye pèmanan', summary_data['pyonye pèmanan'], target_month, target_year)
+    print_category_summary('pyonye espesyal', summary_data['pyonye espesyal'], target_month, target_year)
+    
+    click.echo("\n-----------------------------")
+    total_cong_studies = sum(s_data.get('studies', 0) for s_data in summary_data.values())
+    click.echo(f"Total Etid Kongregasyon an: {total_cong_studies}")
+    click.echo("-----------------------------")
+
+    if sum(s_data.get('count', 0) for s_data in summary_data.values()) == 0:
+        click.echo(f"\nNote: Pa gen rapò ki disponib pou mwa {target_month_str}.")
+    
+    # Confirm unused imports
+    # get_publisher_role - Not used
+    # format_minutes_to_hr_min - Not used (using direct // 60)
+    # ALL_PIONEER_ROLES - Not used
+    # ROLE_NON_PIONEER - Not used
+    # These can be removed from the import statement.
+    # This will be done in a separate step if this refactor is successful.
