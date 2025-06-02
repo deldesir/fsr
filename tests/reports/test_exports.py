@@ -58,7 +58,7 @@ class TestExportCsvCommandUpdated(unittest.TestCase):
             self.assertEqual(len(rows), 0)
 
     def test_month_option_removed(self):
-        """Verify that using the old --month option causes an error."""
+        # This test remains the same
         with tempfile.TemporaryDirectory() as temp_dir:
             csv_filepath = os.path.join(temp_dir, "output.csv")
             result = self.runner.invoke(
@@ -71,7 +71,7 @@ class TestExportCsvCommandUpdated(unittest.TestCase):
             self.assertIn("Error: No such option: --month", result.output)
 
     def test_publisher_with_no_reports_at_all(self):
-        """Verify output for a publisher with no reports (using lowercase name keys)."""
+        """Publisher with no reports: Date 'N/A', other fields empty or False."""
         self.mock_cong_data.publishers_list = [
             {'id': '1', 'firstname': 'NoReport', 'lastname': 'User'}
         ]
@@ -87,170 +87,192 @@ class TestExportCsvCommandUpdated(unittest.TestCase):
             self.assertEqual(row['Date'], 'N/A')
             self.assertEqual(row['FirstName'], 'NoReport')
             self.assertEqual(row['LastName'], 'User')
-            self.assertEqual(row['Remarks'], 'No reports found for this publisher')
+            self.assertEqual(row['SharedInMinistry'], 'False')
+            self.assertEqual(row['BibleStudies'], '') # Expect empty string
+            self.assertEqual(row['AP'], 'False')
+            self.assertEqual(row['Hours'], '')        # Expect empty string
+            self.assertEqual(row['Credit'], '')       # Expect empty string
+            self.assertEqual(row['Remarks'], '')      # Expect empty string (was 'No reports found...')
 
     def test_publisher_name_key_variations(self):
-        """Verify handling of missing or alternatively cased firstname/lastname keys."""
+        """Verify name handling: missing keys, camelCase vs lowercase."""
         self.mock_cong_data.publishers_list = [
-            {'id': 'std_lc', 'firstname': 'John', 'lastname': 'Doe'},      # Standard lowercase (correct)
-            {'id': 'no_fn', 'lastname': 'Smith'},                           # Missing 'firstname'
-            {'id': 'no_ln', 'firstname': 'Jane'},                           # Missing 'lastname'
-            {'id': 'camel_keys', 'firstName': 'Alice', 'lastName': 'Wonder'} # CamelCase keys only
+            {'id': 'std_lc', 'firstname': 'John', 'lastname': 'Doe'},
+            {'id': 'no_fn', 'lastname': 'Smith'},
+            {'id': 'no_ln', 'firstname': 'Jane'},
+            {'id': 'camel_keys', 'firstName': 'Alice', 'lastName': 'Wonder'}
         ]
-        # Provide minimal report data or none, as focus is on name output.
-        # If no reports, they get "No reports found..." remark.
         self.mock_cong_data.reports_by_publisher_month_year = {
-             ('std_lc', 2023, 1): {'has_reported_field_service': True, 'pioneer': ROLE_PUBLISHER, 'studies': 1, 'remarks': 'Std LC User Report'},
+             ('std_lc', 2023, 1): {'has_reported_field_service': True, 'pioneer': ROLE_PUBLISHER, 'studies': 1, 'remarks': 'Std LC Report', 'minutes': 0}, # Date: 2023-01
         }
 
         with tempfile.TemporaryDirectory() as temp_dir:
             result, csv_filepath = self._run_command(temp_dir)
             self.assertEqual(result.exit_code, 0, f"Command failed: {result.output}")
-
             _, rows = self._read_csv_data(csv_filepath)
             self.assertEqual(len(rows), 4)
 
-            def find_row_by_id_surrogate(pub_id_prefix, all_rows):
-                # Since ID is not in CSV, we use known unique names or lack thereof for test.
-                # This is a bit fragile but necessary without IDs in output.
-                if pub_id_prefix == 'std_lc': # John Doe
-                    return next((r for r in all_rows if r['FirstName'] == 'John' and r['LastName'] == 'Doe'), None)
-                if pub_id_prefix == 'no_fn': # Smith, no first name
-                    return next((r for r in all_rows if r['LastName'] == 'Smith' and r['FirstName'] == ''), None)
-                if pub_id_prefix == 'no_ln': # Jane, no last name
-                    return next((r for r in all_rows if r['FirstName'] == 'Jane' and r['LastName'] == ''), None)
-                if pub_id_prefix == 'camel_keys': # Alice Wonder (names will be blank)
-                    # Find the row that has blank names and is not 'no_fn' or 'no_ln'
-                    for r in all_rows:
-                        if r['FirstName'] == '' and r['LastName'] == '' and \
-                           not (r['LastName'] == 'Smith') and \
-                           not (r['FirstName'] == 'Jane'):
-                           return r
-                    return None
-                return None
+            def find_row_by_names(first, last, all_rows): # Simplified finder for this test
+                return next((r for r in all_rows if r['FirstName'] == first and r['LastName'] == last), None)
 
-            # Standard lowercase case (has a report)
-            std_lc_row = find_row_by_id_surrogate('std_lc', rows)
-            self.assertIsNotNone(std_lc_row, "Standard lowercase publisher 'John Doe' not found.")
-            self.assertEqual(std_lc_row['FirstName'], 'John')
-            self.assertEqual(std_lc_row['LastName'], 'Doe')
-            self.assertEqual(std_lc_row['Remarks'], 'Std LC User Report')
+            std_lc_row = find_row_by_names('John', 'Doe', rows)
+            self.assertIsNotNone(std_lc_row)
+            self.assertEqual(std_lc_row['Date'], '2023-01') # Check YYYY-MM
+            self.assertEqual(std_lc_row['Remarks'], 'Std LC Report')
+            self.assertEqual(std_lc_row['BibleStudies'], '1') # Has studies
+            self.assertEqual(std_lc_row['Hours'], '') # 0 minutes -> empty string hours
 
-            # Missing firstname ('Smith')
-            no_fn_row = find_row_by_id_surrogate('no_fn', rows)
-            self.assertIsNotNone(no_fn_row, "Publisher 'Smith' (no firstname) not found.")
-            self.assertEqual(no_fn_row['FirstName'], '')
-            self.assertEqual(no_fn_row['LastName'], 'Smith')
-            self.assertEqual(no_fn_row['Remarks'], 'No reports found for this publisher')
+            no_fn_row = find_row_by_names('', 'Smith', rows)
+            self.assertIsNotNone(no_fn_row)
+            self.assertEqual(no_fn_row['Date'], 'N/A')
+            self.assertEqual(no_fn_row['Remarks'], '') # Empty remarks
 
-            # Missing lastname ('Jane')
-            no_ln_row = find_row_by_id_surrogate('no_ln', rows)
-            self.assertIsNotNone(no_ln_row, "Publisher 'Jane' (no lastname) not found.")
-            self.assertEqual(no_ln_row['FirstName'], 'Jane')
-            self.assertEqual(no_ln_row['LastName'], '')
-            self.assertEqual(no_ln_row['Remarks'], 'No reports found for this publisher')
+            no_ln_row = find_row_by_names('Jane', '', rows)
+            self.assertIsNotNone(no_ln_row)
+            self.assertEqual(no_ln_row['Date'], 'N/A')
+            self.assertEqual(no_ln_row['Remarks'], '')
 
-            # CamelCase keys only ('Alice Wonder' -> names should be empty)
-            camel_keys_row = find_row_by_id_surrogate('camel_keys', rows)
-            self.assertIsNotNone(camel_keys_row, "Publisher with camelCase keys (Alice Wonder) not found.")
-            self.assertEqual(camel_keys_row['FirstName'], '') # Now expects lowercase 'firstname'
-            self.assertEqual(camel_keys_row['LastName'], '')  # Now expects lowercase 'lastname'
-            self.assertEqual(camel_keys_row['Remarks'], 'No reports found for this publisher')
+            camel_keys_row = find_row_by_names('', '', rows) # Expect empty names
+            self.assertIsNotNone(camel_keys_row)
+            self.assertEqual(camel_keys_row['Date'], 'N/A')
+            self.assertEqual(camel_keys_row['Remarks'], '')
 
 
-    def test_publisher_with_multi_month_reports(self):
-        """Verify output for a publisher with reports in multiple months (using lowercase name keys)."""
+    def test_publisher_with_multi_month_reports_and_field_formatting(self):
+        """Test multi-month, date format, empty strings for zero/null values, and remarks."""
         self.mock_cong_data.publishers_list = [
-            {'id': 'p1', 'firstname': 'MultiMonth', 'lastname': 'Reporter'}
+            {'id': 'p1', 'firstname': 'MultiMonth', 'lastname': 'Tester'}
         ]
         self.mock_cong_data.reports_by_publisher_month_year = {
-            ('p1', 2023, 10): {'has_reported_field_service': True, 'pioneer': ROLE_AUXILIARY_PIONEER, 'minutes': 300, 'studies': 2, 'remarks': 'Oct Report'},
-            ('p1', 2023, 11): {'has_reported_field_service': True, 'pioneer': ROLE_PUBLISHER, 'studies': 1, 'remarks': 'Nov Report'},
-            ('p1', 2023, 12): {'has_reported_field_service': False, 'pioneer': ROLE_PUBLISHER, 'remarks': 'Dec - No Service'}
+            # Month 1: AP, with hours, studies, remarks, credit
+            ('p1', 2023, 9): {'has_reported_field_service': True, 'pioneer': ROLE_AUXILIARY_PIONEER, 'minutes': 300, 'studies': 2, 'credithours': '5', 'remarks': 'Good month!'},
+            # Month 2: Publisher, service, but 0 studies, 0 minutes, no credit, no remarks
+            ('p1', 2023, 10): {'has_reported_field_service': True, 'pioneer': ROLE_PUBLISHER, 'minutes': 0, 'studies': None, 'credithours': None, 'remarks': None},
+            # Month 3: No field service, but has a remark
+            ('p1', 2023, 11): {'has_reported_field_service': False, 'pioneer': ROLE_PUBLISHER, 'remarks': 'Took a break'},
+            # Month 4: Service, <1hr minutes, some studies
+            ('p1', 2023, 12): {'has_reported_field_service': True, 'pioneer': ROLE_PUBLISHER, 'minutes': 50, 'studies': 1}
         }
         with tempfile.TemporaryDirectory() as temp_dir:
             result, csv_filepath = self._run_command(temp_dir)
-            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(result.exit_code, 0, f"Command failed: {result.output}")
             _, rows = self._read_csv_data(csv_filepath)
-            self.assertEqual(len(rows), 3)
-            rows.sort(key=lambda r: r['Date'])
+            self.assertEqual(len(rows), 4)
+            rows.sort(key=lambda r: r['Date']) # Sort by YYYY-MM date
 
+            # Month 1 (2023-09)
+            self.assertEqual(rows[0]['Date'], '2023-09')
             self.assertEqual(rows[0]['FirstName'], 'MultiMonth')
-            self.assertEqual(rows[0]['LastName'], 'Reporter')
-            self.assertEqual(rows[0]['Date'], '2023-10-01')
+            self.assertEqual(rows[0]['SharedInMinistry'], 'True')
             self.assertEqual(rows[0]['AP'], 'True')
-            self.assertEqual(rows[0]['Hours'], str(300 // 60))
+            self.assertEqual(rows[0]['Hours'], '5') # 300 // 60
+            self.assertEqual(rows[0]['BibleStudies'], '2')
+            self.assertEqual(rows[0]['Credit'], '5')
+            self.assertEqual(rows[0]['Remarks'], 'Good month!')
 
-            self.assertEqual(rows[1]['FirstName'], 'MultiMonth')
-            self.assertEqual(rows[1]['Date'], '2023-11-01')
-            self.assertEqual(rows[1]['Hours'], '0')
+            # Month 2 (2023-10)
+            self.assertEqual(rows[1]['Date'], '2023-10')
+            self.assertEqual(rows[1]['SharedInMinistry'], 'True')
+            self.assertEqual(rows[1]['AP'], 'False') # Publisher
+            self.assertEqual(rows[1]['Hours'], '') # 0 minutes
+            self.assertEqual(rows[1]['BibleStudies'], '') # studies: None
+            self.assertEqual(rows[1]['Credit'], '')   # credithours: None
+            self.assertEqual(rows[1]['Remarks'], '')  # remarks: None
+
+            # Month 3 (2023-11)
+            self.assertEqual(rows[2]['Date'], '2023-11')
+            self.assertEqual(rows[2]['SharedInMinistry'], 'False')
+            self.assertEqual(rows[2]['AP'], 'False')
+            self.assertEqual(rows[2]['Hours'], '')
+            self.assertEqual(rows[2]['BibleStudies'], '')
+            self.assertEqual(rows[2]['Credit'], '')
+            self.assertEqual(rows[2]['Remarks'], 'Took a break') # Actual remark preserved
+
+            # Month 4 (2023-12)
+            self.assertEqual(rows[3]['Date'], '2023-12')
+            self.assertEqual(rows[3]['SharedInMinistry'], 'True')
+            self.assertEqual(rows[3]['AP'], 'False')
+            self.assertEqual(rows[3]['Hours'], '') # 50 minutes < 1 hour
+            self.assertEqual(rows[3]['BibleStudies'], '1')
+            self.assertEqual(rows[3]['Credit'], '')
+            self.assertEqual(rows[3]['Remarks'], '')
 
 
-    def test_mixed_scenario_multiple_publishers(self):
-        """Test with multiple publishers, mixed reports, multi-month (using lowercase name keys)."""
+    def test_hours_calculation_various_scenarios(self):
+        """Test revised Hours calculation for pioneers and non-pioneers."""
         self.mock_cong_data.publishers_list = [
-            {'id': 'pub1', 'firstname': 'Alice', 'lastname': 'Active'},
-            {'id': 'pub2', 'firstname': 'Bob', 'lastname': 'NoReports'},
-            {'id': 'pub3', 'firstname': 'Charlie', 'lastname': 'Pioneer'}
+            {'id': 'pub_A', 'firstname': 'PubA', 'lastname': 'NonPioPlentyHours'},
+            {'id': 'pub_B', 'firstname': 'PubB', 'lastname': 'PioFewMinutes'},
+            {'id': 'pub_C', 'firstname': 'PubC', 'lastname': 'NonPioNoService'},
+            {'id': 'pub_D', 'firstname': 'PubD', 'lastname': 'PioNoMinutes'},
+            {'id': 'pub_E', 'firstname': 'PubE', 'lastname': 'NonPioZeroMinutes'},
+            {'id': 'pub_F', 'firstname': 'PubF', 'lastname': 'PioExactlyOneHour'}
         ]
         self.mock_cong_data.reports_by_publisher_month_year = {
-            ('pub1', 2024, 1): {'has_reported_field_service': True, 'pioneer': ROLE_PUBLISHER, 'studies': 1, 'remarks': 'Alice Jan'},
-            ('pub1', 2024, 2): {'has_reported_field_service': True, 'pioneer': ROLE_PUBLISHER, 'studies': 2, 'remarks': 'Alice Feb'},
-            ('pub3', 2024, 1): {'has_reported_field_service': True, 'pioneer': ROLE_AUXILIARY_PIONEER, 'minutes': 120, 'studies': 3, 'remarks': 'Charlie Jan AP'},
-            ('pub3', 2024, 2): {'has_reported_field_service': True, 'pioneer': ROLE_REGULAR_PIONEER, 'minutes': 420, 'studies': 4, 'remarks': 'Charlie Feb RP'}
+            ('pub_A', 2024, 1): {'has_reported_field_service': True, 'pioneer': ROLE_PUBLISHER, 'minutes': 130}, # Expect "2"
+            ('pub_B', 2024, 1): {'has_reported_field_service': True, 'pioneer': ROLE_AUXILIARY_PIONEER, 'minutes': 50}, # Expect ""
+            ('pub_C', 2024, 1): {'has_reported_field_service': False, 'pioneer': ROLE_PUBLISHER, 'minutes': 120}, # Expect "" (no service)
+            ('pub_D', 2024, 1): {'has_reported_field_service': True, 'pioneer': ROLE_REGULAR_PIONEER, 'minutes': None}, # Expect ""
+            ('pub_E', 2024, 1): {'has_reported_field_service': True, 'pioneer': ROLE_PUBLISHER, 'minutes': 0}, # Expect ""
+            ('pub_F', 2024, 1): {'has_reported_field_service': True, 'pioneer': ROLE_AUXILIARY_PIONEER, 'minutes': 60} # Expect "1"
         }
         with tempfile.TemporaryDirectory() as temp_dir:
             result, csv_filepath = self._run_command(temp_dir)
-            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(result.exit_code, 0, f"Command failed: {result.output}")
             _, rows = self._read_csv_data(csv_filepath)
-            self.assertEqual(len(rows), 5)
+            self.assertEqual(len(rows), 6)
 
-            alice_rows = sorted([r for r in rows if r['FirstName'] == 'Alice'], key=lambda r: r['Date'])
-            bob_rows = [r for r in rows if r['FirstName'] == 'Bob'] # Should only be one
-            charlie_rows = sorted([r for r in rows if r['FirstName'] == 'Charlie'], key=lambda r: r['Date'])
+            rows_by_name = {r['FirstName']: r for r in rows}
 
-            self.assertEqual(len(alice_rows), 2)
-            self.assertEqual(alice_rows[0]['lastname'], 'Active') # Checking consistency
-            self.assertEqual(alice_rows[0]['Remarks'], 'Alice Jan')
+            self.assertEqual(rows_by_name['PubA']['Hours'], '2')
+            self.assertFalse(rows_by_name['PubA']['AP'] == 'True') # AP is boolean False
 
-            self.assertEqual(len(bob_rows), 1)
-            self.assertEqual(bob_rows[0]['lastname'], 'NoReports')
-            self.assertEqual(bob_rows[0]['Remarks'], 'No reports found for this publisher')
+            self.assertEqual(rows_by_name['PubB']['Hours'], '')
+            self.assertTrue(rows_by_name['PubB']['AP'] == 'True') # AP is boolean True
 
-            self.assertEqual(len(charlie_rows), 2)
-            self.assertEqual(charlie_rows[0]['lastname'], 'Pioneer')
-            self.assertEqual(charlie_rows[0]['AP'], 'True')
-            self.assertEqual(charlie_rows[0]['Hours'], str(120 // 60))
+            self.assertEqual(rows_by_name['PubC']['Hours'], '')
+            self.assertEqual(rows_by_name['PubC']['SharedInMinistry'], 'False')
+
+            self.assertEqual(rows_by_name['PubD']['Hours'], '')
+
+            self.assertEqual(rows_by_name['PubE']['Hours'], '')
+
+            self.assertEqual(rows_by_name['PubF']['Hours'], '1')
+            self.assertTrue(rows_by_name['PubF']['AP'] == 'True')
 
 
     def test_existing_output_file_overwritten(self):
-        """Verify existing output file is overwritten (using lowercase name keys)."""
+        # This test is more about file system interaction, less about format details here
+        # but will use the new formatting.
         with tempfile.TemporaryDirectory() as temp_dir:
             self.mock_cong_data.publishers_list = [
                 {'id': 'p_initial', 'firstname': 'Initial', 'lastname': 'Run'}
             ]
             self.mock_cong_data.reports_by_publisher_month_year = {
-                ('p_initial', 2023, 1): {'has_reported_field_service': True, 'pioneer': ROLE_PUBLISHER, 'studies': 1}
+                ('p_initial', 2023, 1): {'has_reported_field_service': True, 'pioneer': ROLE_PUBLISHER, 'studies': 0} # studies 0 -> ''
             }
             result1, csv_filepath1 = self._run_command(temp_dir)
             self.assertEqual(result1.exit_code, 0)
             _, rows1 = self._read_csv_data(csv_filepath1)
             self.assertEqual(len(rows1), 1)
-            self.assertEqual(rows1[0]['FirstName'], 'Initial') # Check name from lowercase source key
+            self.assertEqual(rows1[0]['FirstName'], 'Initial')
+            self.assertEqual(rows1[0]['BibleStudies'], '') # studies 0 -> ''
+            self.assertEqual(rows1[0]['Date'], '2023-01') # YYYY-MM
 
             self.mock_cong_data.publishers_list = [
                 {'id': 'p_overwrite', 'firstname': 'Overwritten', 'lastname': 'Run'}
             ]
             self.mock_cong_data.reports_by_publisher_month_year = {
-                 ('p_overwrite', 2023, 2): {'has_reported_field_service': True, 'pioneer': ROLE_AUXILIARY_PIONEER, 'minutes': 60}
+                 ('p_overwrite', 2023, 2): {'has_reported_field_service': True, 'pioneer': ROLE_AUXILIARY_PIONEER, 'minutes': 60} # 1 hour
             }
             result2, csv_filepath2 = self._run_command(temp_dir)
             self.assertEqual(result2.exit_code, 0)
             self.assertEqual(csv_filepath1, csv_filepath2)
             _, rows2 = self._read_csv_data(csv_filepath2)
             self.assertEqual(len(rows2), 1)
-            self.assertEqual(rows2[0]['FirstName'], 'Overwritten') # Check name
-            self.assertEqual(rows2[0]['AP'], 'True')
+            self.assertEqual(rows2[0]['FirstName'], 'Overwritten')
+            self.assertEqual(rows2[0]['Hours'], '1') # 60 minutes -> 1 hour
+            self.assertEqual(rows2[0]['Date'], '2023-02') # YYYY-MM
 
 if __name__ == '__main__':
     unittest.main(argv=['first-arg-is-ignored'], exit=False)
