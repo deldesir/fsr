@@ -73,18 +73,21 @@ def export_csv_command(ctx: click.Context, csv_filepath: str):
 
                 if report_data and report_data.get('has_reported_field_service', False):
                     row_data['SharedInMinistry'] = True
-                    role = get_publisher_role(report_data.get('pioneer'))
-                    row_data['AP'] = (role == ROLE_AUXILIARY_PIONEER)
+                    pioneer_status = report_data.get('pioneer')
+                    row_data['AP'] = (pioneer_status == 'Auxiliary')
 
                     # Populate BibleStudies
                     studies_raw = report_data.get('studies')
-                    if studies_raw is not None:
+                    if studies_raw is not None: # Check if the key exists and is not null
                         try:
-                            # Ensure it's a valid number before converting
                             studies_val = int(studies_raw)
-                            row_data['BibleStudies'] = str(studies_val)
+                            if studies_val > 0: # Only populate if studies are greater than 0
+                                row_data['BibleStudies'] = str(studies_val)
+                            # If studies_val is 0 or less, BibleStudies remains '', which is desired
                         except (ValueError, TypeError):
-                            pass # Remains '' if not a valid number
+                            # studies_raw was not a valid number, BibleStudies remains ''
+                            pass
+                    # Else (if studies_raw is None), BibleStudies remains ''
 
                     # Populate Hours (for any publisher if minutes > 0 and result in hours >=1)
                     minutes_raw = report_data.get('minutes')
@@ -100,24 +103,41 @@ def export_csv_command(ctx: click.Context, csv_filepath: str):
                             pass # minutes_raw was not a valid number, Hours remains ''
 
                     # Populate Credit
-                    credit_raw = report_data.get('credithours')
-                    if credit_raw is not None:
-                        credit_str = str(credit_raw).strip()
-                        if credit_str: # Ensure not empty after stripping
-                            row_data['Credit'] = credit_str
+                    credit_raw = report_data.get('credithours') # This can be numeric, string, or null in JSON
+                    if credit_raw is not None and str(credit_raw).strip(): # Check if it's not None and not an empty/whitespace string
+                        try:
+                            # Attempt to convert to float first to handle potential decimal strings like "1.5"
+                            numeric_credit_val = float(str(credit_raw))
 
-                    # Populate Remarks
-                    remarks_val = report_data.get('remarks', '').strip()
-                    if remarks_val:
-                        row_data['Remarks'] = remarks_val
+                            if numeric_credit_val > 0:
+                                # If it needs to be an integer in the CSV, and it's a whole number:
+                                if numeric_credit_val == int(numeric_credit_val):
+                                    row_data['Credit'] = str(int(numeric_credit_val))
+                                else: # It's a float with decimal part
+                                    row_data['Credit'] = str(numeric_credit_val)
+                            # If numeric_credit_val is 0 or less, Credit remains '', which is desired
+
+                        except (ValueError, TypeError):
+                            # credit_raw was not a valid number (e.g. non-numeric string after strip). Credit remains ''.
+                            pass
+                    # Else (if credit_raw is None or an empty/whitespace string), Credit remains ''
+
+                    # Remarks population was here, now moved after this if/elif block
+                    pass # Placeholder for removed remarks logic
 
                 elif report_data: # Report exists but has_reported_field_service is False
                     # SharedInMinistry and AP remain False, Hours, BibleStudies, Credit remain ''
-                    # Only populate remarks if they exist
-                    remarks_val = report_data.get('remarks', '').strip()
-                    if remarks_val:
-                        row_data['Remarks'] = remarks_val
-                # If no report_data (should not happen here due to outer loop structure), all relevant fields remain ''
+                    # Remarks population was here, now moved after this if/elif block
+                    pass # Placeholder for removed remarks logic
+
+                # Consolidated Remarks population for any valid report_data
+                if report_data: # This check is technically redundant if we are inside the publisher_id match
+                    remarks_raw = report_data.get('remarks', '') # Get remarks, default to empty string if key missing
+                    if isinstance(remarks_raw, str): # Ensure it's a string before stripping
+                        remarks_val = remarks_raw.strip()
+                    else: # If not a string (e.g. None, or a number by mistake), treat as empty
+                        remarks_val = ''
+                    row_data['Remarks'] = remarks_val # Assign stripped value
 
                 output_rows.append(row_data)
 
