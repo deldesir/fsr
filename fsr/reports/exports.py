@@ -62,51 +62,82 @@ def export_csv_command(ctx: click.Context, csv_filepath: str):
                 row_data = {
                     'FirstName': first_name,
                     'LastName': last_name,
-                    'Date': f"{report_year:04d}-{report_month:02d}-01",
-                    'SharedInMinistry': False,
-                    'AP': False,
-                    'Hours': 0,
-                    'BibleStudies': 0,
+                    'Date': f"{report_year:04d}-{report_month:02d}",
+                    'SharedInMinistry': False, # Default, overridden if has_reported_field_service
+                    'AP': False,             # Default, overridden if AP and has_reported_field_service
+                    'Hours': '',
+                    'BibleStudies': '',
                     'Credit': '',
-                    'Remarks': '' # Default empty, will be overridden
+                    'Remarks': ''
                 }
 
                 if report_data and report_data.get('has_reported_field_service', False):
-                    role = get_publisher_role(report_data.get('pioneer'))
-                    minutes_raw = report_data.get('minutes')
-                    studies_raw = report_data.get('studies')
-                    credit_raw = report_data.get('credithours')
-
-                    try:
-                        minutes = int(minutes_raw) if minutes_raw is not None else 0
-                    except (ValueError, TypeError):
-                        minutes = 0
-                    try:
-                        studies = int(studies_raw) if studies_raw is not None else 0
-                    except (ValueError, TypeError):
-                        studies = 0
-
-                    credit_val = ''
-                    if isinstance(credit_raw, (int, float)):
-                        credit_val = str(credit_raw)
-                    elif isinstance(credit_raw, str):
-                        credit_val = credit_raw.strip()
-
                     row_data['SharedInMinistry'] = True
-                    row_data['AP'] = (role == ROLE_AUXILIARY_PIONEER)
+                    pioneer_status = report_data.get('pioneer')
+                    row_data['AP'] = (pioneer_status == 'Auxiliary')
 
-                    if role in ALL_PIONEER_ROLES:
-                        row_data['Hours'] = minutes // 60
-                    else:
-                        row_data['Hours'] = 0
+                    # Populate BibleStudies
+                    studies_raw = report_data.get('studies')
+                    if studies_raw is not None: # Check if the key exists and is not null
+                        try:
+                            studies_val = int(studies_raw)
+                            if studies_val > 0: # Only populate if studies are greater than 0
+                                row_data['BibleStudies'] = str(studies_val)
+                            # If studies_val is 0 or less, BibleStudies remains '', which is desired
+                        except (ValueError, TypeError):
+                            # studies_raw was not a valid number, BibleStudies remains ''
+                            pass
+                    # Else (if studies_raw is None), BibleStudies remains ''
 
-                    row_data['BibleStudies'] = studies
-                    row_data['Credit'] = credit_val
-                    row_data['Remarks'] = report_data.get('remarks', '').strip()
-                elif report_data: # Report exists but not field service
-                    row_data['Remarks'] = 'Did not report field service'
-                else: # Should not happen if iterating items from reports_by_publisher_month_year
-                    row_data['Remarks'] = 'Error: Report data missing unexpectedly'
+                    # Populate Hours (for any publisher if minutes > 0 and result in hours >=1)
+                    minutes_raw = report_data.get('minutes')
+                    if minutes_raw is not None:
+                        try:
+                            minutes_val = int(minutes_raw)
+                            if minutes_val > 0:
+                                hours_calculated = minutes_val // 60
+                                if hours_calculated > 0: # Only show if at least 1 hour
+                                    row_data['Hours'] = str(hours_calculated)
+                                # If hours_calculated is 0 (e.g. 30 minutes), Hours remains '', which is desired.
+                        except (ValueError, TypeError):
+                            pass # minutes_raw was not a valid number, Hours remains ''
+
+                    # Populate Credit
+                    credit_raw = report_data.get('credithours') # This can be numeric, string, or null in JSON
+                    if credit_raw is not None and str(credit_raw).strip(): # Check if it's not None and not an empty/whitespace string
+                        try:
+                            # Attempt to convert to float first to handle potential decimal strings like "1.5"
+                            numeric_credit_val = float(str(credit_raw))
+
+                            if numeric_credit_val > 0:
+                                # If it needs to be an integer in the CSV, and it's a whole number:
+                                if numeric_credit_val == int(numeric_credit_val):
+                                    row_data['Credit'] = str(int(numeric_credit_val))
+                                else: # It's a float with decimal part
+                                    row_data['Credit'] = str(numeric_credit_val)
+                            # If numeric_credit_val is 0 or less, Credit remains '', which is desired
+
+                        except (ValueError, TypeError):
+                            # credit_raw was not a valid number (e.g. non-numeric string after strip). Credit remains ''.
+                            pass
+                    # Else (if credit_raw is None or an empty/whitespace string), Credit remains ''
+
+                    # Remarks population was here, now moved after this if/elif block
+                    pass # Placeholder for removed remarks logic
+
+                elif report_data: # Report exists but has_reported_field_service is False
+                    # SharedInMinistry and AP remain False, Hours, BibleStudies, Credit remain ''
+                    # Remarks population was here, now moved after this if/elif block
+                    pass # Placeholder for removed remarks logic
+
+                # Consolidated Remarks population for any valid report_data
+                if report_data: # This check is technically redundant if we are inside the publisher_id match
+                    remarks_raw = report_data.get('remarks', '') # Get remarks, default to empty string if key missing
+                    if isinstance(remarks_raw, str): # Ensure it's a string before stripping
+                        remarks_val = remarks_raw.strip()
+                    else: # If not a string (e.g. None, or a number by mistake), treat as empty
+                        remarks_val = ''
+                    row_data['Remarks'] = remarks_val # Assign stripped value
 
                 output_rows.append(row_data)
 
@@ -118,10 +149,10 @@ def export_csv_command(ctx: click.Context, csv_filepath: str):
                 'Date': 'N/A',
                 'SharedInMinistry': False,
                 'AP': False,
-                'Hours': 0,
-                'BibleStudies': 0,
+                'Hours': '',
+                'BibleStudies': '',
                 'Credit': '',
-                'Remarks': 'No reports found for this publisher'
+                'Remarks': '' # Changed from 'No reports found for this publisher'
             })
 
     temp_csv_filepath = csv_filepath + ".tmp"
