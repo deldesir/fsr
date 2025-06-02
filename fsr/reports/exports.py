@@ -5,10 +5,10 @@ import click
 import csv
 import os
 from typing import Optional
-from core.data_loader import CongregationData
-from core.file_finder import find_csv_file
-from core.utils import get_publisher_role, parse_year_month
-from ..core.constants import ROLE_AUXILIARY_PIONEER, ALL_PIONEER_ROLES
+from fsr.core.data_loader import CongregationData
+from fsr.core.file_finder import find_csv_file
+from fsr.core.utils import get_publisher_role, parse_year_month
+from fsr.core.constants import ROLE_AUXILIARY_PIONEER, ALL_PIONEER_ROLES
 
 @click.group('export')
 def export_group():

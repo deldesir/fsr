@@ -4,9 +4,10 @@ Main CLI entry point for the Congregation Reporter.
 import click
 import sys
 import json # Required for json.JSONDecodeError
+from typing import Optional
 
-from core.data_loader import load_and_prepare_data, CongregationData
-from core.file_finder import find_json_file
+from fsr.core.data_loader import load_and_prepare_data, CongregationData
+from fsr.core.file_finder import find_json_file
 
 @click.group()
 @click.option(
@@ -61,15 +62,15 @@ def cli(ctx: click.Context, json_file: Optional[str]):
         click.echo(f"An unexpected error occurred during data loading from '{actual_json_file_path}': {e}", err=True)
         ctx.abort()
 
-from .reports.summaries import summary_group # type: ignore
+from fsr.reports.summaries import summary_group
 cli.add_command(summary_group)
 
-from .reports.exports import export_group # type: ignore
+from fsr.reports.exports import export_group
 cli.add_command(export_group)
 
 if __name__ == "__main__":
     # The type hint for json_file needs to be Optional[str] for the cli function
     # but click itself when running __main__ might not pass None if default is not specified at option level
     # However, with default=None, it should be fine.
-    from typing import Optional
+    # from typing import Optional # No longer needed here as it's at the top
     cli(obj={}) # type: ignore

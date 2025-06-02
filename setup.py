@@ -3,13 +3,13 @@ from setuptools import setup, find_packages
 setup(
     name="fsr",
     version="0.1.0",
-    packages=find_packages(include=['cli', 'core', 'reports']),
+    packages=find_packages(where='.', include=['fsr', 'fsr.*']),
     install_requires=[
         "click",
     ],
     entry_points={
         "console_scripts": [
-            "fsr=cli:cli",
+            "fsr=fsr.cli:cli",
         ],
     },
     author="Blondel Mondésir",

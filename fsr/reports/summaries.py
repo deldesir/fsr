@@ -2,9 +2,9 @@
 Commands for generating summary reports.
 """
 import click
-from core.data_loader import CongregationData
-from core.utils import get_publisher_role, format_minutes_to_hr_min, parse_year_month
-from ..core.constants import ALL_PIONEER_ROLES, ROLE_NON_PIONEER
+from fsr.core.data_loader import CongregationData
+from fsr.core.utils import get_publisher_role, format_minutes_to_hr_min, parse_year_month
+from fsr.core.constants import ALL_PIONEER_ROLES, ROLE_NON_PIONEER
 
 @click.group('summary')
 def summary_group():

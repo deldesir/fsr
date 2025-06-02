@@ -1,7 +1,7 @@
 """
 Utility functions for the Congregation Reporter project.
 """
-from .constants import (
+from fsr.core.constants import (
     ROLE_NON_PIONEER, ROLE_AUXILIARY_PIONEER, ROLE_REGULAR_PIONEER, ROLE_SPECIAL_PIONEER,
     PIONEER_KEYWORD_AUXILIARY, PIONEER_KEYWORD_REGULAR, PIONEER_KEYWORD_SPECIAL
 )
