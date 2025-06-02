@@ -6,6 +6,7 @@ import sys
 import json # Required for json.JSONDecodeError
 from typing import Optional
 
+from fsr.core.constants import DEFAULT_JSON_TYPE_KEY, CONFIGURABLE_JSON_TYPES
 from fsr.core.data_loader import load_and_prepare_data, CongregationData
 from fsr.core.file_finder import find_json_file
 
@@ -15,10 +16,17 @@ from fsr.core.file_finder import find_json_file
     type=click.Path(exists=True, dir_okay=False, readable=True, resolve_path=True),
     required=False,
     default=None,
-    help="Path to the congregation JSON data file. Optional; if not provided, attempts to auto-detect common Hourglass export files."
+    help="Path to the congregation JSON data file. Optional; if not provided, attempts to auto-detect."
+)
+@click.option(
+    '--json-type',
+    type=click.Choice(list(CONFIGURABLE_JSON_TYPES.keys()), case_sensitive=False),
+    default=DEFAULT_JSON_TYPE_KEY,
+    show_default=True,
+    help="Specify the type of JSON file to auto-detect (e.g., 'hourglass'). Used when --json-file is not provided."
 )
 @click.pass_context
-def cli(ctx: click.Context, json_file: Optional[str]):
+def cli(ctx: click.Context, json_file: Optional[str], json_type: str):
     """
     Field Service Reporter (fsr) CLI.
 
@@ -30,14 +38,23 @@ def cli(ctx: click.Context, json_file: Optional[str]):
     actual_json_file_path = json_file
 
     if actual_json_file_path is None:
-        click.echo("Info: --json-file not provided. Attempting to auto-detect Hourglass JSON export...")
-        actual_json_file_path = find_json_file()
+        # Determine the display name for the JSON type being searched.
+        # CONFIGURABLE_JSON_TYPES maps key to filename part, e.g., "hourglass" -> "hourglass-export"
+        # For the message, we use the key itself, which is more user-friendly.
+        json_type_display_name = json_type # This is the key like "hourglass"
+        click.echo(f"Info: --json-file not provided. Attempting to auto-detect '{json_type_display_name}' JSON export...")
+        try:
+            actual_json_file_path = find_json_file(json_type_key=json_type)
+        except ValueError as e:
+            click.echo(click.style(f"Error: {e}", fg="red"), err=True)
+            ctx.abort()
+
         if actual_json_file_path is None:
-            click.echo(click.style("Error: Auto-detection failed. No suitable JSON file found in standard locations (current directory, Downloads).", fg="red"), err=True)
-            click.echo(click.style("Please specify the file path using the --json-file option.", fg="red"), err=True)
+            click.echo(click.style(f"Error: Auto-detection for '{json_type_display_name}' JSON file failed. No suitable file found in standard locations (current directory, Downloads).", fg="red"), err=True)
+            click.echo(click.style("Please specify the file path using the --json-file option, or ensure the correct --json-type is selected.", fg="red"), err=True)
             ctx.abort()
         else:
-            click.echo(click.style(f"Info: Auto-detected JSON file: {actual_json_file_path}", fg="green"))
+            click.echo(click.style(f"Info: Auto-detected '{json_type_display_name}' JSON file: {actual_json_file_path}", fg="green"))
 
     try:
         cong_data = load_and_prepare_data(actual_json_file_path)

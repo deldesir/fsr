@@ -16,3 +16,9 @@ ALL_PIONEER_ROLES = [
     ROLE_REGULAR_PIONEER,
     ROLE_SPECIAL_PIONEER,
 ]
+
+# File Types and App Targets
+DEFAULT_JSON_TYPE_KEY = "hourglass"
+DEFAULT_APP_TARGET = "NWScheduler"
+CONFIGURABLE_JSON_TYPES = {"hourglass": "hourglass-export"}
+CONFIGURABLE_APP_TARGETS = ["NWScheduler"]

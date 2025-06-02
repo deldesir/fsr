@@ -1,7 +1,9 @@
 import os
 import re
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional
+
+from fsr.core.constants import DEFAULT_JSON_TYPE_KEY, CONFIGURABLE_JSON_TYPES
 
 def find_data_file(default_name_parts: List[str], extensions: List[str], default_dirs: List[str]) -> Optional[str]:
     """
@@ -103,16 +105,34 @@ def find_data_file(default_name_parts: List[str], extensions: List[str], default
     return str(latest_file.resolve()) if latest_file else None
 
 
-def find_json_file() -> Optional[str]:
+def find_json_file(json_type_key: Optional[str] = None) -> Optional[str]:
     """
-    Finds a JSON file, typically an Hourglass export.
+    Finds a JSON file based on the specified type key.
 
-    Searches for "hourglass-export.json" or "hourglass-export (x).json"
+    Searches for "<json_type_pattern>.json" or "<json_type_pattern> (x).json"
     in the current directory and the user's Downloads folder.
+    The actual filename pattern is determined by `json_type_key` and `CONFIGURABLE_JSON_TYPES`.
+
+    Args:
+        json_type_key: The key to look up the filename pattern in `CONFIGURABLE_JSON_TYPES`.
+                       If None, `DEFAULT_JSON_TYPE_KEY` is used.
 
     Returns:
         The absolute path to the selected JSON file, or None if not found.
+
+    Raises:
+        ValueError: If the provided `json_type_key` (or default) is not found in `CONFIGURABLE_JSON_TYPES`.
     """
+    current_json_type_key = json_type_key if json_type_key is not None else DEFAULT_JSON_TYPE_KEY
+
+    if current_json_type_key not in CONFIGURABLE_JSON_TYPES:
+        raise ValueError(
+            f"Unknown JSON type key: '{current_json_type_key}'. "
+            f"Available keys are: {list(CONFIGURABLE_JSON_TYPES.keys())}"
+        )
+
+    filename_pattern = CONFIGURABLE_JSON_TYPES[current_json_type_key]
+
     home_dir = Path.home()
     # Common directory names for Downloads, case-insensitive
     download_dirs_names = ["Downloads", "downloads", "Téléchargements", "téléchargements"]
@@ -124,17 +144,11 @@ def find_json_file() -> Optional[str]:
     # Filter out directories that don't exist
     default_dirs = [d for d in potential_dirs if Path(d).is_dir()]
 
-    # If no specific download directory was found, ensure at least home and current dir are there
-    if not any(Path.home() / name in [Path(d) for d in default_dirs] for name in download_dirs_names):
-         # This check is a bit redundant given the construction, but ensures Downloads is prioritized if found
-        pass # The list `default_dirs` will contain existing directories from `potential_dirs`
-
     if not default_dirs: # Fallback if somehow even "." and home are not dirs (highly unlikely)
         default_dirs = ["."]
 
-
     return find_data_file(
-        default_name_parts=["hourglass-export"],
+        default_name_parts=[filename_pattern],
         extensions=["json"],
         default_dirs=default_dirs
     )
