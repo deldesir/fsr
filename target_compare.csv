@@ -1,0 +1,41 @@
+Date,FirstName,LastName,SharedInMinistry,BibleStudies,AP,Hours,Credit,Remarks
+2026-08,Stephanie,Roman,True,5,True,50,,
+2026-08,Carol,Mitchell,True,1,False,1,,
+2026-08,Carl,Smith,True,2,False,2,,"Good job"
+2026-08,Jason,Nguyen,True,,False,10,10,
+2026-08,Michael,Edwards,False,,,,,"Vacation"
+2026-08,Gabriel,Williams,False,,False,,,,
+2026-08,Joel,Jenkins,False,,False,,,,
+2026-08,Jacqueline,Moore,False,,False,,,,
+2026-08,Crystal,Anderson,False,,False,,,,
+2026-08,Matthew,Jones,False,,False,,,,
+2026-08,Rebecca,Smith,False,,False,,,,
+2026-08,Robert,Hall,False,,False,,,,
+2026-08,Susan,Johnson,False,,False,,,,
+2026-08,Joseph,Miller,False,,False,,,,
+2026-08,Austin,Martin,False,,False,,,,
+2026-08,Sara,Garcia,False,,False,,,,
+2026-08,Aaron,Davis,False,,False,,,,
+2026-08,Christina,Rodriguez,False,,False,,,,
+2026-08,Tammy,Wilson,False,,False,,,,
+2026-08,David,Martinez,False,,False,,,,
+2026-09,Michael,Edwards,True,1,False,3,,"Feeling Better"
+2026-09,Stephanie,Roman,True,4,True,3,1,"Great time"
+2026-09,Matthew,Jones,True,4,False,,10,"Focused on studies"
+2026-09,Carol,Mitchell,True,,,,""
+2026-09,Gabriel,Williams,True,1,False,1,,
+2026-09,Joel,Jenkins,True,3,True,50,,
+2026-09,Jacqueline,Moore,True,2,False,2,,
+2026-09,Jason,Nguyen,True,6,False,75,,"Wonderful month"
+2026-09,Carl,Smith,False,,,,,"Busy with work"
+2026-09,Crystal,Anderson,False,,False,,,,
+2026-09,Rebecca,Smith,False,,False,,,,
+2026-09,Robert,Hall,False,,False,,,,
+2026-09,Susan,Johnson,False,,False,,,,
+2026-09,Joseph,Miller,False,,False,,,,
+2026-09,Austin,Martin,False,,False,,,,
+2026-09,Sara,Garcia,False,,False,,,,
+2026-09,Aaron,Davis,False,,False,,,,
+2026-09,Christina,Rodriguez,False,,False,,,,
+2026-09,Tammy,Wilson,False,,False,,,,
+2026-09,David,Martinez,False,,False,,,,
