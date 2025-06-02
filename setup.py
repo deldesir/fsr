@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name="fsr",
     version="0.1.0",
-    packages=find_packages(include=['cli', 'core', 'reports']),
+    packages=find_packages(include=['core', 'reports']),
     install_requires=[
         "click",
     ],
