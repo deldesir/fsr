@@ -5,10 +5,18 @@ import click
 import csv
 import os
 from typing import Optional
+from datetime import datetime
+from pathlib import Path
 from fsr.core.data_loader import CongregationData
-from fsr.core.file_finder import find_csv_file
+# find_csv_file is not used in this file, so removing it.
+# from fsr.core.file_finder import find_csv_file
 from fsr.core.utils import get_publisher_role, parse_year_month
-from fsr.core.constants import ROLE_AUXILIARY_PIONEER, ALL_PIONEER_ROLES
+from fsr.core.constants import (
+    ROLE_AUXILIARY_PIONEER,
+    ALL_PIONEER_ROLES,
+    DEFAULT_APP_TARGET,
+    CONFIGURABLE_APP_TARGETS
+)
 
 @click.group('export')
 def export_group():
@@ -20,11 +28,19 @@ def export_group():
     '--csv-file',
     'csv_filepath',
     type=click.Path(dir_okay=False, writable=True, resolve_path=True),
-    required=True,
-    help="Path to CSV file to create."
+    required=False, # Changed to False
+    default=None,   # Added default=None
+    help="Path to CSV file to create. If not provided, a default filename will be generated (e.g., NWScheduler_input_YYYYMMDD.csv)."
+)
+@click.option(
+    '--app-target',
+    type=click.Choice(CONFIGURABLE_APP_TARGETS, case_sensitive=False),
+    default=DEFAULT_APP_TARGET,
+    show_default=True,
+    help="Specify the target application for the CSV export, influences default filename if --csv-file is not provided."
 )
 @click.pass_context
-def export_csv_command(ctx: click.Context, csv_filepath: str):
+def export_csv_command(ctx: click.Context, csv_filepath: Optional[str], app_target: str):
     """
     Exports congregation report data to a CSV file. 
     For each month that has any reported activity in the entire dataset, a row is generated for every publisher listed.
@@ -37,9 +53,30 @@ def export_csv_command(ctx: click.Context, csv_filepath: str):
     if 'cong_data' not in ctx.obj or not isinstance(ctx.obj['cong_data'], CongregationData):
         click.echo(click.style("Error: Congregation data not loaded. Ensure JSON data is loaded first (e.g., via --json-file).", fg="red"), err=True)
         ctx.abort()
-        return
+        return # For linters, ctx.abort() exits
+
+    if 'json_file_path' not in ctx.obj:
+        click.echo(click.style("Error: Input JSON file path not found in context. This is unexpected.", fg="red"), err=True)
+        ctx.abort()
+        return # For linters
 
     cong_data: CongregationData = ctx.obj['cong_data']
+    input_json_file_path: str = ctx.obj['json_file_path']
+
+    # Determine final CSV filepath
+    actual_csv_filepath = csv_filepath
+    if actual_csv_filepath is None:
+        input_json_filename_stem = Path(input_json_file_path).stem
+        timestamp = datetime.now().strftime("%Y%m%d")
+        default_filename = f"{app_target}_{input_json_filename_stem}_{timestamp}.csv"
+        actual_csv_filepath = os.path.join(os.getcwd(), default_filename) # Save in current working directory
+        click.echo(click.style(f"Info: --csv-file not provided. Defaulting to: {actual_csv_filepath}", fg="blue"))
+
+    # Ensure the directory for the CSV file exists, if it's not in the CWD.
+    # click.Path with resolve_path=True should handle this, but an explicit check if creating subdirs.
+    # For now, assuming os.getcwd() or provided path's parent dir exists.
+    # If actual_csv_filepath could contain new subdirectories, they'd need to be created.
+    # e.g., Path(actual_csv_filepath).parent.mkdir(parents=True, exist_ok=True)
 
     fieldnames = [
         'Date', 'FirstName', 'LastName', 'SharedInMinistry', 'BibleStudies',
@@ -185,18 +222,18 @@ def export_csv_command(ctx: click.Context, csv_filepath: str):
 
             output_rows.append(row_data)
             
-    temp_csv_filepath = csv_filepath + ".tmp"
+    temp_csv_filepath = actual_csv_filepath + ".tmp"
     try:
         with open(temp_csv_filepath, mode='w', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(output_rows)
 
-        os.replace(temp_csv_filepath, csv_filepath)
-        click.echo(click.style(f"CSV file '{csv_filepath}' created successfully.", fg="green"))
+        os.replace(temp_csv_filepath, actual_csv_filepath)
+        click.echo(click.style(f"CSV file '{actual_csv_filepath}' created successfully.", fg="green"))
 
     except Exception as e:
-        click.echo(click.style(f"Error writing CSV file '{csv_filepath}': {e}", fg="red"), err=True)
+        click.echo(click.style(f"Error writing CSV file '{actual_csv_filepath}': {e}", fg="red"), err=True)
         if os.path.exists(temp_csv_filepath):
             try:
                 os.remove(temp_csv_filepath)
