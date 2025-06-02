@@ -2,6 +2,7 @@
 Commands for generating summary reports.
 """
 import click
+import datetime
 from fsr.core.data_loader import CongregationData
 from fsr.core.utils import get_publisher_role, format_minutes_to_hr_min, parse_year_month
 from fsr.core.constants import ALL_PIONEER_ROLES, ROLE_NON_PIONEER
@@ -82,7 +83,7 @@ def monthly_activity_report(ctx: click.Context, target_month_str: str):
     click.echo("-----------------------------")
     click.echo(f"Month: {target_month_str}")
     # Using a generic "Report Generated:" timestamp, can be adjusted if a specific "data as of" date is available
-    click.echo(f"Report Generated: {click.DateTime().strftime('%Y-%m-%d %H:%M')}")
+    click.echo(f"Report Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
     click.echo("-----------------------------")
     click.echo("--- Pioneers (Auxiliary, Regular, Special) ---")
     click.echo("-----------------------------")
