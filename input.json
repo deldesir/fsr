@@ -1,0 +1,42 @@
+{
+  "congregation": {},
+  "publishers": [
+    {"id": "1000001", "firstname": "Michael", "lastname": "Edwards"},
+    {"id": "1000002", "firstname": "Stephanie", "lastname": "Roman"},
+    {"id": "1000003", "firstname": "Carol", "lastname": "Mitchell"},
+    {"id": "1000004", "firstname": "Carl", "lastname": "Smith"},
+    {"id": "1000005", "firstname": "Jason", "lastname": "Nguyen"},
+    {"id": "1000006", "firstname": "Gabriel", "lastname": "Williams"},
+    {"id": "1000007", "firstname": "Joel", "lastname": "Jenkins"},
+    {"id": "1000008", "firstname": "Jacqueline", "lastname": "Moore"},
+    {"id": "1000009", "firstname": "Crystal", "lastname": "Anderson"},
+    {"id": "1000010", "firstname": "Matthew", "lastname": "Jones"},
+    {"id": "1000011", "firstname": "Rebecca", "lastname": "Smith"},
+    {"id": "1000012", "firstname": "Robert", "lastname": "Hall"},
+    {"id": "1000013", "firstname": "Susan", "lastname": "Johnson"},
+    {"id": "1000014", "firstname": "Joseph", "lastname": "Miller"},
+    {"id": "1000015", "firstname": "Austin", "lastname": "Martin"},
+    {"id": "1000016", "firstname": "Sara", "lastname": "Garcia"},
+    {"id": "1000017", "firstname": "Aaron", "lastname": "Davis"},
+    {"id": "1000018", "firstname": "Christina", "lastname": "Rodriguez"},
+    {"id": "1000019", "firstname": "Tammy", "lastname": "Wilson"},
+    {"id": "1000020", "firstname": "David", "lastname": "Martinez"}
+  ],
+  "reports": [
+    {"year": 2026, "month": 8, "user": {"id": "1000001"}, "pioneer": null, "has_reported_field_service": false, "minutes": null, "studies": null, "credithours": null, "remarks": "Vacation"},
+    {"year": 2026, "month": 8, "user": {"id": "1000002"}, "pioneer": "Auxiliary", "has_reported_field_service": true, "minutes": 3000, "studies": 5, "credithours": null, "remarks": ""},
+    {"year": 2026, "month": 8, "user": {"id": "1000003"}, "pioneer": null, "has_reported_field_service": true, "minutes": 60, "studies": 1, "credithours": null, "remarks": ""},
+    {"year": 2026, "month": 8, "user": {"id": "1000004"}, "pioneer": null, "has_reported_field_service": true, "minutes": 120, "studies": 2, "credithours": null, "remarks": "Good job"},
+    {"year": 2026, "month": 8, "user": {"id": "1000005"}, "pioneer": "Regular", "has_reported_field_service": true, "minutes": 600, "studies": null, "credithours": 10, "remarks": ""},
+    {"year": 2026, "month": 9, "user": {"id": "1000001"}, "pioneer": null, "has_reported_field_service": true, "minutes": 180, "studies": 1, "credithours": null, "remarks": "Feeling Better"},
+    {"year": 2026, "month": 9, "user": {"id": "1000002"}, "pioneer": "Auxiliary", "has_reported_field_service": true, "minutes": 200, "studies": 4, "credithours": 1, "remarks": "Great time"},
+    {"year": 2026, "month": 9, "user": {"id": "1000003"}, "pioneer": null, "has_reported_field_service": true, "minutes": 0, "studies": 0, "credithours": null, "remarks": ""},
+    {"year": 2026, "month": 9, "user": {"id": "1000004"}, "pioneer": null, "has_reported_field_service": false, "minutes": null, "studies": null, "credithours": null, "remarks": "Busy with work"},
+    {"year": 2026, "month": 9, "user": {"id": "1000005"}, "pioneer": "Regular", "has_reported_field_service": true, "minutes": 4500, "studies": 6, "credithours": null, "remarks": "Wonderful month"},
+    {"year": 2026, "month": 9, "user": {"id": "1000006"}, "pioneer": null, "has_reported_field_service": true, "minutes": 60, "studies": 1, "credithours": null, "remarks": ""},
+    {"year": 2026, "month": 9, "user": {"id": "1000007"}, "pioneer": "Auxiliary", "has_reported_field_service": true, "minutes": 3000, "studies": 3, "credithours": null, "remarks": ""},
+    {"year": 2026, "month": 9, "user": {"id": "1000008"}, "pioneer": null, "has_reported_field_service": true, "minutes": 120, "studies": 2, "credithours": null, "remarks": ""},
+    {"year": 2026, "month": 9, "user": {"id": "1000009"}, "pioneer": null, "has_reported_field_service": false, "minutes": null, "studies": null, "credithours": null, "remarks": ""},
+    {"year": 2026, "month": 9, "user": {"id": "1000010"}, "pioneer": "Regular", "has_reported_field_service": true, "minutes": 0, "studies": 4, "credithours": 10, "remarks": "Focused on studies"}
+  ]
+}

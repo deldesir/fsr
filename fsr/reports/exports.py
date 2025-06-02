@@ -26,8 +26,10 @@ def export_group():
 @click.pass_context
 def export_csv_command(ctx: click.Context, csv_filepath: str):
     """
-    Exports all congregation report data for all publishers across all months to a new CSV file.
-    Publishers with no reports in the dataset will be excluded from the output.
+    Exports congregation report data to a CSV file.
+    For each month that has any reported activity in the entire dataset, a row is generated for every publisher listed.
+    If a publisher does not have a specific report for one of these months, their row for that month will show default values
+    (e.g., False for booleans, empty strings for text/numeric fields).
 
     The CSV file will contain 'Date', 'FirstName', 'LastName', 'SharedInMinistry',
     'BibleStudies', 'AP', 'Hours', 'Credit', 'Remarks' columns.
@@ -46,61 +48,64 @@ def export_csv_command(ctx: click.Context, csv_filepath: str):
 
     output_rows = []
 
-    for publisher in cong_data.publishers_list:
-        publisher_id = publisher.get('id') # Use .get for safety, though id is expected
-        if not publisher_id:
-            click.echo(click.style(f"Warning: Publisher data missing 'id'. Skipping entry: {publisher}", fg="yellow"), err=True)
-            continue
+    # Collect Unique Months from all reports in the dataset
+    all_report_months = set()
+    if cong_data.reports_by_publisher_month_year: # Check if there are any reports at all
+        for _, year, month in cong_data.reports_by_publisher_month_year.keys():
+            all_report_months.add((year, month))
 
-        first_name = publisher.get('firstname', '')
-        last_name = publisher.get('lastname', '')
+    # If there are publishers but absolutely no reports for anyone,
+    # all_report_months will be empty. The subsequent loops based on sorted_months
+    # or publishers_list will handle this by likely producing an empty data CSV.
+    # No special row generation needed here if no report months exist.
 
-        # Filter reports for the current publisher first
-        reports_for_this_publisher = {
-            (year, month): report_obj
-            for (pub_id, year, month), report_obj in cong_data.reports_by_publisher_month_year.items()
-            if pub_id == publisher_id
-        }
+    sorted_months = sorted(list(all_report_months))
 
-        if not reports_for_this_publisher:
-            continue # Skip to the next publisher if they have no reports at all
+    # The main iteration logic will be changed in a subsequent step.
+    # For now, this subtask only focuses on collecting and sorting these unique months.
+    # New loop structure: Iterate through months, then publishers.
+    for current_year, current_month in sorted_months:
+        for publisher in cong_data.publishers_list:
+            publisher_id = publisher.get('id')
+            if not publisher_id:
+                # This case should ideally be handled when loading/validating CongregationData
+                # or at the start of publisher iteration if a publisher absolutely needs an ID.
+                # For robustness here, we can skip if ID is essential for report lookup.
+                click.echo(click.style(f"Warning: Publisher data missing 'id', cannot process for month {current_year}-{current_month}. Data: {publisher}", fg="yellow"), err=True)
+                continue
 
-        # Iterate through the filtered reports for this publisher
-        for (report_year, report_month), report_data in reports_for_this_publisher.items():
-            # publisher_has_any_reports = True (This flag is no longer needed)
-            # if report_pub_id == publisher_id: (This check is no longer needed)
+            first_name = publisher.get('firstname', '')
+            last_name = publisher.get('lastname', '')
 
-            # Step 1: Initial row_data Setup for a Report
-                row_data = {
-                    'Date': f"{report_year:04d}-{report_month:02d}",
-                    'FirstName': first_name, # Already fetched from publisher object
-                    'LastName': last_name,   # Already fetched from publisher object
-                    'SharedInMinistry': False,
-                    'BibleStudies': '',
-                    'AP': False,
-                    'Hours': '',
-                    'Credit': '',
-                    'Remarks': ''
-                }
+            report_data = cong_data.reports_by_publisher_month_year.get((publisher_id, current_year, current_month))
 
-                # Step 2: Determine shared_in_ministry
-                # report_data is guaranteed to be non-None here due to the loop structure
+            # Initialize row_data with defaults for all fields for this specific month and publisher
+            row_data = {
+                'Date': f"{current_year:04d}-{current_month:02d}",
+                'FirstName': first_name,
+                'LastName': last_name,
+                'SharedInMinistry': False,
+                'BibleStudies': '',
+                'AP': False,
+                'Hours': '',
+                'Credit': '',
+                'Remarks': ''
+            }
+
+            if report_data:
+                # If a report exists for this publisher and month, populate from it
                 shared_in_ministry = report_data.get('has_reported_field_service', False)
                 row_data['SharedInMinistry'] = shared_in_ministry
 
-                # Step 3: Populate Remarks (conditionally)
                 actual_remarks = report_data.get('remarks')
                 if isinstance(actual_remarks, str) and actual_remarks.strip():
                     row_data['Remarks'] = actual_remarks.strip()
-                # Else, it remains '' from default
 
-                # Step 4: Conditional Population based on shared_in_ministry
                 if shared_in_ministry:
                     # AP Status
                     pioneer_status = report_data.get('pioneer')
                     if pioneer_status == 'Auxiliary':
                         row_data['AP'] = True
-                    # Else AP remains False (its default)
 
                     # Hours
                     minutes_raw = report_data.get('minutes')
@@ -111,9 +116,8 @@ def export_csv_command(ctx: click.Context, csv_filepath: str):
                                 hours_calculated = minutes_val // 60
                                 if hours_calculated > 0:
                                     row_data['Hours'] = str(hours_calculated)
-                                # else: Hours remains '' (for <60 mins but >0 mins)
                         except (ValueError, TypeError):
-                            pass # Hours remains ''
+                            pass
 
                     # Bible Studies
                     studies_raw = report_data.get('studies')
@@ -123,7 +127,7 @@ def export_csv_command(ctx: click.Context, csv_filepath: str):
                             if studies_val > 0:
                                 row_data['BibleStudies'] = str(studies_val)
                         except (ValueError, TypeError):
-                            pass # BibleStudies remains ''
+                            pass
 
                     # Credit Hours
                     credit_raw = report_data.get('credithours')
@@ -136,17 +140,11 @@ def export_csv_command(ctx: click.Context, csv_filepath: str):
                                 else:
                                     row_data['Credit'] = str(numeric_credit_val)
                         except (ValueError, TypeError):
-                            pass # Credit remains ''
-                else:
-                    # shared_in_ministry is False
-                    # Confirming defaults (already set, but for clarity as per request)
-                    row_data['AP'] = False
-                    row_data['Hours'] = ''
-                    row_data['BibleStudies'] = ''
-                    row_data['Credit'] = ''
-                    # Remarks are handled prior to this if/else
+                            pass
+                # else for shared_in_ministry: AP, Hours, BibleStudies, Credit remain False or '' (their defaults)
+            # else for report_data: all fields remain their defaults for this month
 
-                output_rows.append(row_data)
+            output_rows.append(row_data)
 
     temp_csv_filepath = csv_filepath + ".tmp"
     try:

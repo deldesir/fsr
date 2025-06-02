@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+# backend-path = ["."] # Removed: setuptools.build_meta is found via installed setuptools
+
+[project]
+name = "fsr"
+version = "0.1.0" # Matches setup.py
+description = "A CLI tool to process congregation field service data from a JSON file." # Matches setup.py
+readme = "README.md" # Assumes README.md is the long description
+requires-python = ">=3.6" # Matches setup.py
+license = "GPL-3.0-or-later" # SPDX identifier
+license-files = ["LICENSE"]  # Specify the license file
+authors = [
+  {name = "Blondel Mondésir"} # Email removed as it was empty in setup.py
+]
+dependencies = [
+  "click" # From install_requires in setup.py
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    # "License :: OSI Approved :: GNU General Public License v3 (GPLv3)", # Removed, covered by SPDX identifier
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/deldesir/fsr" # Matches setup.py, key quoted for TOML
+
+[project.scripts]
+fsr = "fsr.cli:cli" # Matches entry_points in setup.py
