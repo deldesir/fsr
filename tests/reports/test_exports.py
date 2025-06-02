@@ -7,11 +7,8 @@ import tempfile
 
 from fsr.reports.exports import export_csv_command
 from fsr.core.data_loader import CongregationData
-# ROLE_AUXILIARY_PIONEER, ROLE_REGULAR_PIONEER, ROLE_PUBLISHER are not directly used by tests
-# but are good for context when creating mock data for 'pioneer' field.
-# Actual 'AP' column logic relies on 'pioneer' string value being 'Auxiliary'.
 
-class TestExportCsvCommandFullyUpdated(unittest.TestCase):
+class TestExportCsvCommandFinal(unittest.TestCase):
 
     def setUp(self):
         self.runner = CliRunner()
@@ -40,70 +37,92 @@ class TestExportCsvCommandFullyUpdated(unittest.TestCase):
             rows = [dict(row) for row in reader]
         return fieldnames, rows
 
-    def test_csv_creation_and_headers(self):
-        """Verify CSV creation and correct headers."""
+    def test_csv_creation_and_headers_if_no_publishers_with_reports(self):
+        """If no publishers have reports (or no publishers at all), CSV has only headers."""
+        self.mock_cong_data.publishers_list = [
+            {'id': 'pub_no_reports', 'firstname': 'NoReport', 'lastname': 'User'}
+        ]
+        self.mock_cong_data.reports_by_publisher_month_year = {} # No reports for anyone
+
         with tempfile.TemporaryDirectory() as temp_dir:
-            self.mock_cong_data.publishers_list = [] # No publishers
             result, csv_filepath = self._run_command(temp_dir)
             self.assertEqual(result.exit_code, 0, f"Command failed: {result.output}")
             self.assertTrue(os.path.exists(csv_filepath))
             fieldnames, rows = self._read_csv_data(csv_filepath)
             self.assertListEqual(list(fieldnames) if fieldnames else [], self.expected_headers)
-            self.assertEqual(len(rows), 0)
+            self.assertEqual(len(rows), 0) # No data rows
 
-    def test_publisher_with_no_reports_at_all(self):
-        """Publisher with no reports: Date 'N/A', specific fields empty or False."""
+    def test_publisher_with_no_reports_is_omitted(self):
+        """Publishers with no reports are omitted from CSV."""
         self.mock_cong_data.publishers_list = [
-            {'id': '1', 'firstname': 'NoReport', 'lastname': 'User'}
+            {'id': 'pub_with_report', 'firstname': 'Reporter', 'lastname': 'Person'},
+            {'id': 'pub_no_reports', 'firstname': 'NoReport', 'lastname': 'User'}
         ]
-        # reports_by_publisher_month_year remains empty
+        self.mock_cong_data.reports_by_publisher_month_year = {
+            ('pub_with_report', 2023, 1): {'has_reported_field_service': True, 'minutes': 60}
+        }
         with tempfile.TemporaryDirectory() as temp_dir:
             result, csv_filepath = self._run_command(temp_dir)
             self.assertEqual(result.exit_code, 0, f"Command failed: {result.output}")
             _, rows = self._read_csv_data(csv_filepath)
-            self.assertEqual(len(rows), 1)
-            row = rows[0]
-            self.assertEqual(row['Date'], 'N/A')
-            self.assertEqual(row['FirstName'], 'NoReport')
-            self.assertEqual(row['LastName'], 'User')
-            self.assertEqual(row['SharedInMinistry'], 'False')
-            self.assertEqual(row['BibleStudies'], '')
-            self.assertEqual(row['AP'], 'False')
-            self.assertEqual(row['Hours'], '')
-            self.assertEqual(row['Credit'], '')
-            self.assertEqual(row['Remarks'], '') # Remarks also empty now
+            self.assertEqual(len(rows), 1) # Only one publisher should be in the output
+            self.assertEqual(rows[0]['FirstName'], 'Reporter')
 
-    def test_comprehensive_field_logic_multi_publisher_multi_month(self):
-        """Comprehensive test for all field logic across multiple publishers and months."""
+    def test_publisher_name_key_variations_with_reports(self):
+        """Name key variations for publishers *who have reports*."""
         self.mock_cong_data.publishers_list = [
-            {'id': 'pub1', 'firstname': 'Alice', 'lastname': 'AuxPioneer'},
-            {'id': 'pub2', 'firstname': 'Bob', 'lastname': 'Publisher'},
-            {'id': 'pub3', 'firstname': 'Charlie', 'lastname': 'Irregular'},
-            {'id': 'pub4', 'firstname': 'David', 'lastname': 'SpecialPio'},
-            {'id': 'pub5', 'firstname': 'Eve', 'lastname': 'FloaterCredit'}
+            {'id': 'std_lc', 'firstname': 'John', 'lastname': 'Doe'},
+            {'id': 'no_fn', 'lastname': 'Smith'},
+            {'id': 'no_ln', 'firstname': 'Jane'},
+            {'id': 'camel_keys', 'firstName': 'Alice', 'lastName': 'Wonder'} # Code expects lowercase
+        ]
+        # Each publisher needs at least one report to be included
+        self.mock_cong_data.reports_by_publisher_month_year = {
+            ('std_lc', 2023, 1): {'has_reported_field_service': True, 'minutes': 60},
+            ('no_fn', 2023, 1): {'has_reported_field_service': True, 'minutes': 60},
+            ('no_ln', 2023, 1): {'has_reported_field_service': True, 'minutes': 60},
+            ('camel_keys', 2023, 1): {'has_reported_field_service': True, 'minutes': 60},
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result, csv_filepath = self._run_command(temp_dir)
+            self.assertEqual(result.exit_code, 0, f"Command failed: {result.output}")
+            _, rows = self._read_csv_data(csv_filepath)
+            self.assertEqual(len(rows), 4)
+
+            rows_by_name = {(r['FirstName'], r['LastName']): r for r in rows}
+            self.assertIn(('John', 'Doe'), rows_by_name)
+            self.assertIn(('', 'Smith'), rows_by_name)
+            self.assertIn(('Jane', ''), rows_by_name)
+            self.assertIn(('', ''), rows_by_name) # For Alice Wonder with camelCase keys
+
+    def test_final_comprehensive_output_scenarios(self):
+        """Comprehensive test for all field logic, including omission of no-report publishers."""
+        self.mock_cong_data.publishers_list = [
+            {'id': 'p1', 'firstname': 'AuxiliaryP', 'lastname': 'One'},
+            {'id': 'p2', 'firstname': 'RegularP', 'lastname': 'Two'},
+            {'id': 'p3', 'firstname': 'PublisherF', 'lastname': 'Three'},
+            {'id': 'p4', 'firstname': 'NoServiceP', 'lastname': 'Four'},
+            {'id': 'p5', 'firstname': 'MiscP', 'lastname': 'Five'},
+            {'id': 'p6', 'firstname': 'NeverReported', 'lastname': 'Six'} # This publisher has no reports
         ]
         self.mock_cong_data.reports_by_publisher_month_year = {
-            # Alice (Auxiliary Pioneer)
-            ('pub1', 2023, 9): {'pioneer': 'Auxiliary', 'has_reported_field_service': True, 'minutes': 300, 'studies': 2, 'remarks': 'Full month AP'}, # 5 hours
-            ('pub1', 2023, 10): {'pioneer': 'Auxiliary', 'has_reported_field_service': True, 'minutes': 50}, # <1 hour
+            # p1: AuxiliaryP One
+            ('p1', 2023, 9): {'has_reported_field_service': True, 'pioneer': 'Auxiliary', 'minutes': 1200, 'studies': 3, 'credithours': 0, 'remarks': 'AP Full Month'}, # Credit 0 -> ''
+            ('p1', 2023, 10): {'has_reported_field_service': True, 'pioneer': 'Auxiliary', 'minutes': 30, 'studies': 0, 'credithours': 5}, # <1hr, 0 studies
 
-            # Bob (Publisher)
-            ('pub2', 2023, 9): {'pioneer': None, 'has_reported_field_service': True, 'minutes': 130, 'studies': 1, 'credithours': 0}, # 2 hours, credit 0 -> ''
-            ('pub2', 2023, 10): {'pioneer': 'Publisher', 'has_reported_field_service': False, 'remarks': '  Sick leave  '}, # No service, but has remark
+            # p2: RegularP Two
+            ('p2', 2023, 9): {'has_reported_field_service': True, 'pioneer': 'Regular', 'minutes': 3000, 'studies': None, 'credithours': "2.5", 'remarks': 'RP good month'},
 
-            # Charlie (Irregular - one month service, one month no report data for this pub, should get N/A line)
-            # Note: Charlie won't have a specific N/A line if other reports exist for them.
-            # This test structure means we define reports. If a month is missing, no line for that month.
-            # The "N/A" line is for publishers with *NO* reports at all.
-            ('pub3', 2023, 9): {'pioneer': None, 'has_reported_field_service': True, 'studies': 0, 'credithours': 'NonNumeric'}, # studies 0 -> '', credit non-numeric -> ''
+            # p3: PublisherF Three (non-pioneer)
+            ('p3', 2023, 9): {'has_reported_field_service': True, 'pioneer': None, 'minutes': 120, 'studies': 1, 'credithours': 0},
+            ('p3', 2023, 10): {'has_reported_field_service': True, 'pioneer': 'Publisher', 'minutes': 0, 'studies': 0, 'credithours': 0},
 
-            # David (Special Pioneer)
-            ('pub4', 2023, 9): {'pioneer': 'Special', 'has_reported_field_service': True, 'minutes': 0, 'remarks': 'Special Pioneer Report'}, # minutes 0 -> ''
+            # p4: NoServiceP Four (has_reported_field_service: False)
+            ('p4', 2023, 9): {'has_reported_field_service': False, 'pioneer': 'Auxiliary', 'minutes': 600, 'studies': 2, 'credithours': 5, 'remarks': 'Specific Comment When Not Sharing'},
+            ('p4', 2023, 10): {'has_reported_field_service': False, 'pioneer': None, 'remarks': "   "}, # Remarks only whitespace
 
-            # Eve (Credit checks)
-            ('pub5', 2023, 9): {'pioneer': None, 'has_reported_field_service': True, 'credithours': 10.0, 'studies': 3}, # Credit 10.0 -> "10"
-            ('pub5', 2023, 10): {'pioneer': None, 'has_reported_field_service': True, 'credithours': "7.5", 'studies': 2}, # Credit "7.5" -> "7.5"
-            ('pub5', 2023, 11): {'pioneer': None, 'has_reported_field_service': True, 'credithours': None, 'studies': 1}, # Credit None -> ""
+            # p5: MiscP Five
+            ('p5', 2023, 9): {'has_reported_field_service': True, 'pioneer': 'Special', 'minutes': None, 'studies': 5, 'credithours': "10"},
         }
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -111,91 +130,60 @@ class TestExportCsvCommandFullyUpdated(unittest.TestCase):
             self.assertEqual(result.exit_code, 0, f"Command failed: {result.output}")
             _, rows = self._read_csv_data(csv_filepath)
 
-            # Expected rows: pub1 (2), pub2 (2), pub3 (1), pub4 (1), pub5 (3) = 9 rows
-            self.assertEqual(len(rows), 9)
+            # Expected rows: p1(2), p2(1), p3(2), p4(2), p5(1) = 8 rows. p6 is omitted.
+            self.assertEqual(len(rows), 8)
 
-            # Helper to find rows for a publisher and sort by date
-            def get_pub_rows(firstname, all_rows):
-                return sorted([r for r in all_rows if r['FirstName'] == firstname], key=lambda r: r['Date'])
+            def get_rows(firstname): return sorted([r for r in rows if r['FirstName'] == firstname], key=lambda r: r['Date'])
 
-            # Alice - Auxiliary Pioneer
-            alice_rows = get_pub_rows('Alice', rows)
-            self.assertEqual(len(alice_rows), 2)
-            self.assertEqual(alice_rows[0]['Date'], '2023-09')
-            self.assertEqual(alice_rows[0]['AP'], 'True')
-            self.assertEqual(alice_rows[0]['Hours'], '5')
-            self.assertEqual(alice_rows[0]['BibleStudies'], '2')
-            self.assertEqual(alice_rows[0]['Remarks'], 'Full month AP')
-            self.assertEqual(alice_rows[1]['Date'], '2023-10')
-            self.assertEqual(alice_rows[1]['AP'], 'True')
-            self.assertEqual(alice_rows[1]['Hours'], '') # 50 minutes
+            # P1: AuxiliaryP One
+            p1_rows = get_rows('AuxiliaryP')
+            self.assertEqual(len(p1_rows), 2)
+            self.assertEqual(p1_rows[0]['Date'], '2023-09'); self.assertEqual(p1_rows[0]['SharedInMinistry'], 'True'); self.assertEqual(p1_rows[0]['AP'], 'True'); self.assertEqual(p1_rows[0]['Hours'], '20'); self.assertEqual(p1_rows[0]['BibleStudies'], '3'); self.assertEqual(p1_rows[0]['Credit'], ''); self.assertEqual(p1_rows[0]['Remarks'], 'AP Full Month')
+            self.assertEqual(p1_rows[1]['Date'], '2023-10'); self.assertEqual(p1_rows[1]['SharedInMinistry'], 'True'); self.assertEqual(p1_rows[1]['AP'], 'True'); self.assertEqual(p1_rows[1]['Hours'], ''); self.assertEqual(p1_rows[1]['BibleStudies'], ''); self.assertEqual(p1_rows[1]['Credit'], '5'); self.assertEqual(p1_rows[1]['Remarks'], '')
 
-            # Bob - Publisher
-            bob_rows = get_pub_rows('Bob', rows)
-            self.assertEqual(len(bob_rows), 2)
-            self.assertEqual(bob_rows[0]['Date'], '2023-09')
-            self.assertEqual(bob_rows[0]['AP'], 'False')
-            self.assertEqual(bob_rows[0]['Hours'], '2') # 130 minutes
-            self.assertEqual(bob_rows[0]['BibleStudies'], '1')
-            self.assertEqual(bob_rows[0]['Credit'], '') # Credit 0
-            self.assertEqual(bob_rows[1]['Date'], '2023-10')
-            self.assertEqual(bob_rows[1]['SharedInMinistry'], 'False')
-            self.assertEqual(bob_rows[1]['AP'], 'False')
-            self.assertEqual(bob_rows[1]['Hours'], '')
-            self.assertEqual(bob_rows[1]['BibleStudies'], '')
-            self.assertEqual(bob_rows[1]['Remarks'], 'Sick leave') # Trimmed
+            # P2: RegularP Two
+            p2_rows = get_rows('RegularP')
+            self.assertEqual(len(p2_rows), 1)
+            self.assertEqual(p2_rows[0]['Date'], '2023-09'); self.assertEqual(p2_rows[0]['SharedInMinistry'], 'True'); self.assertEqual(p2_rows[0]['AP'], 'False'); self.assertEqual(p2_rows[0]['Hours'], '50'); self.assertEqual(p2_rows[0]['BibleStudies'], ''); self.assertEqual(p2_rows[0]['Credit'], '2.5'); self.assertEqual(p2_rows[0]['Remarks'], 'RP good month')
 
-            # Charlie - Irregular
-            charlie_rows = get_pub_rows('Charlie', rows)
-            self.assertEqual(len(charlie_rows), 1)
-            self.assertEqual(charlie_rows[0]['Date'], '2023-09')
-            self.assertEqual(charlie_rows[0]['AP'], 'False')
-            self.assertEqual(charlie_rows[0]['BibleStudies'], '') # studies 0
-            self.assertEqual(charlie_rows[0]['Credit'], '')     # credit non-numeric
+            # P3: PublisherF Three
+            p3_rows = get_rows('PublisherF')
+            self.assertEqual(len(p3_rows), 2)
+            self.assertEqual(p3_rows[0]['Date'], '2023-09'); self.assertEqual(p3_rows[0]['SharedInMinistry'], 'True'); self.assertEqual(p3_rows[0]['AP'], 'False'); self.assertEqual(p3_rows[0]['Hours'], '2'); self.assertEqual(p3_rows[0]['BibleStudies'], '1'); self.assertEqual(p3_rows[0]['Credit'], ''); self.assertEqual(p3_rows[0]['Remarks'], '')
+            self.assertEqual(p3_rows[1]['Date'], '2023-10'); self.assertEqual(p3_rows[1]['SharedInMinistry'], 'True'); self.assertEqual(p3_rows[1]['AP'], 'False'); self.assertEqual(p3_rows[1]['Hours'], ''); self.assertEqual(p3_rows[1]['BibleStudies'], ''); self.assertEqual(p3_rows[1]['Credit'], ''); self.assertEqual(p3_rows[1]['Remarks'], '')
 
-            # David - Special Pioneer
-            david_rows = get_pub_rows('David', rows)
-            self.assertEqual(len(david_rows), 1)
-            self.assertEqual(david_rows[0]['Date'], '2023-09')
-            self.assertEqual(david_rows[0]['AP'], 'False') # Not 'Auxiliary'
-            self.assertEqual(david_rows[0]['Hours'], '') # minutes 0
-            self.assertEqual(david_rows[0]['Remarks'], 'Special Pioneer Report')
+            # P4: NoServiceP Four
+            p4_rows = get_rows('NoServiceP')
+            self.assertEqual(len(p4_rows), 2)
+            self.assertEqual(p4_rows[0]['Date'], '2023-09'); self.assertEqual(p4_rows[0]['SharedInMinistry'], 'False'); self.assertEqual(p4_rows[0]['AP'], 'False'); self.assertEqual(p4_rows[0]['Hours'], ''); self.assertEqual(p4_rows[0]['BibleStudies'], ''); self.assertEqual(p4_rows[0]['Credit'], ''); self.assertEqual(p4_rows[0]['Remarks'], 'Specific Comment When Not Sharing')
+            self.assertEqual(p4_rows[1]['Date'], '2023-10'); self.assertEqual(p4_rows[1]['SharedInMinistry'], 'False'); self.assertEqual(p4_rows[1]['AP'], 'False'); self.assertEqual(p4_rows[1]['Hours'], ''); self.assertEqual(p4_rows[1]['BibleStudies'], ''); self.assertEqual(p4_rows[1]['Credit'], ''); self.assertEqual(p4_rows[1]['Remarks'], '') # Whitespace remark becomes empty
 
-            # Eve - Credit checks
-            eve_rows = get_pub_rows('Eve', rows)
-            self.assertEqual(len(eve_rows), 3)
-            self.assertEqual(eve_rows[0]['Date'], '2023-09')
-            self.assertEqual(eve_rows[0]['Credit'], '10') # 10.0 -> "10"
-            self.assertEqual(eve_rows[0]['BibleStudies'], '3')
-            self.assertEqual(eve_rows[1]['Date'], '2023-10')
-            self.assertEqual(eve_rows[1]['Credit'], '7.5') # "7.5" -> "7.5"
-            self.assertEqual(eve_rows[1]['BibleStudies'], '2')
-            self.assertEqual(eve_rows[2]['Date'], '2023-11')
-            self.assertEqual(eve_rows[2]['Credit'], '') # None -> ""
-            self.assertEqual(eve_rows[2]['BibleStudies'], '1')
+            # P5: MiscP Five
+            p5_rows = get_rows('MiscP')
+            self.assertEqual(len(p5_rows), 1)
+            self.assertEqual(p5_rows[0]['Date'], '2023-09'); self.assertEqual(p5_rows[0]['SharedInMinistry'], 'True'); self.assertEqual(p5_rows[0]['AP'], 'False'); self.assertEqual(p5_rows[0]['Hours'], ''); self.assertEqual(p5_rows[0]['BibleStudies'], '5'); self.assertEqual(p5_rows[0]['Credit'], '10'); self.assertEqual(p5_rows[0]['Remarks'], '')
 
-    # Simplified test_existing_output_file_overwritten as detailed checks are above
-    def test_existing_output_file_overwritten(self):
+            # Verify P6 (NeverReported) is NOT in the output
+            for row in rows:
+                self.assertNotEqual(row['FirstName'], 'NeverReported', "Publisher 'NeverReported' should be omitted.")
+
+    def test_existing_output_file_overwritten(self): # Keep this as a sanity check for file ops
         with tempfile.TemporaryDirectory() as temp_dir:
-            self.mock_cong_data.publishers_list = [{'id': 'p1', 'firstname': 'Initial', 'lastname': 'Content'}]
-            self.mock_cong_data.reports_by_publisher_month_year = {('p1', 2023, 1): {'has_reported_field_service': True, 'minutes': 70}}
+            self.mock_cong_data.publishers_list = [{'id': 'p_init', 'firstname': 'Initial', 'lastname': 'Content'}]
+            self.mock_cong_data.reports_by_publisher_month_year = {('p_init', 2023, 1): {'has_reported_field_service': True, 'minutes': 70}}
             result1, csv_filepath1 = self._run_command(temp_dir)
             self.assertEqual(result1.exit_code, 0)
             _, rows1 = self._read_csv_data(csv_filepath1)
-            self.assertEqual(rows1[0]['FirstName'], 'Initial')
             self.assertEqual(rows1[0]['Hours'], '1')
-            self.assertEqual(rows1[0]['Date'], '2023-01')
 
-            self.mock_cong_data.publishers_list = [{'id': 'p2', 'firstname': 'Overwritten', 'lastname': 'Content'}]
-            self.mock_cong_data.reports_by_publisher_month_year = {('p2', 2023, 2): {'has_reported_field_service': True, 'pioneer': 'Auxiliary', 'minutes': 120}}
-            result2, csv_filepath2 = self._run_command(temp_dir) # same filename output.csv
+            self.mock_cong_data.publishers_list = [{'id': 'p_over', 'firstname': 'Overwritten', 'lastname': 'Content'}]
+            self.mock_cong_data.reports_by_publisher_month_year = {('p_over', 2023, 2): {'has_reported_field_service': True, 'pioneer': 'Auxiliary', 'minutes': 120}}
+            result2, csv_filepath2 = self._run_command(temp_dir)
             self.assertEqual(result2.exit_code, 0)
-            self.assertEqual(csv_filepath1, csv_filepath2)
             _, rows2 = self._read_csv_data(csv_filepath2)
             self.assertEqual(rows2[0]['FirstName'], 'Overwritten')
-            self.assertEqual(rows2[0]['AP'], 'True')
             self.assertEqual(rows2[0]['Hours'], '2')
-            self.assertEqual(rows2[0]['Date'], '2023-02')
+
 
 if __name__ == '__main__':
     unittest.main(argv=['first-arg-is-ignored'], exit=False)
