@@ -7,15 +7,35 @@
 *   Load and parse service data from a structured JSON file.
 *   Auto-detects the main JSON data file (typically `hourglass-export.json`) if not specified.
 *   Generate monthly activity summary reports, detailing pioneer and publisher activity.
-*   Update existing CSV files with monthly service report data. The CSV file for update (e.g., `Descahos Rapò Sèvis.csv` or `FSGExtract.csv`) can also be auto-detected.
+*   Export service data to a new CSV file, providing a comprehensive view of activity across all months and publishers in the dataset.
 *   Modular design, allowing for future expansion with new report types or export formats.
 
 ## Installation
 
-To install `fsr` locally, run:
-```bash
-pip install .
-```
+It is recommended to install `fsr` within a Python virtual environment.
+
+1.  **Create and activate a virtual environment (optional but recommended):**
+    ```bash
+    # For macOS/Linux
+    python3 -m venv .venv
+    source .venv/bin/activate
+    
+    # For Windows
+    # python -m venv .venv
+    # .venv\Scripts\activate
+    ```
+
+2.  **Install `fsr`:**
+    *   **For regular use:**
+        ```bash
+        pip install .
+        ```
+        This command installs the package from the current directory. `pip` will use the `pyproject.toml` file to build and install the package.
+    *   **For development (editable install):**
+        ```bash
+        pip install -e .
+        ```
+        This allows you to make changes to the source code and have them immediately reflected when you run the `fsr` command.
 
 ## Usage
 
@@ -43,53 +63,82 @@ Below are examples of common commands.
 
 **1. Generate a Monthly Activity Summary:**
 
-This command generates a summary for a specific month (e.g., October 2023).
+The `fsr summary monthly-activity --month YYYY-MM` command generates a console-based summary report of congregation activity for the specified month.
 
-*   **With auto-detection of JSON file:**
+*   **Output Details:** The summary is presented in French/Haitian Creole and includes the following categories:
+    *   'Pwoklamatè ki pa Pyonye' (Non-Pioneer Publishers)
+    *   'Pyonye Oksilyè' (Auxiliary Pioneers)
+    *   'Pyonye Pèmanan' (Regular Pioneers)
+    *   'Pyonye Espesyal' (Special Pioneers)
+
+    For each category, the following information is provided:
+    *   **"Total Lè"** (Total Hours): Sum of hours (`minutes // 60`) from reports in that category. This is shown for 'Pyonye Oksilyè', 'Pyonye Pèmanan', and 'Pyonye Espesyal' only.
+    *   **"Total Etid"** (Total Studies): Sum of Bible studies reported.
+    *   **Count of reporting publishers:** A line indicating how many unique individuals reported in that category for the month (e.g., "_Te gen X pwoklamatè ki pa pyonye ki te bay rapò pou mwa sa._").
+
+    The report also includes a "Total Etid Kongregasyon an" (Total Congregation Bible Studies).
+
+*   **Data Interpretation for Summary:**
+    *   **Active Participation:** A publisher is considered to have participated in ministry for summary aggregation if their report for the month shows positive `minutes` OR positive `studies`.
+    *   **`has_reported_field_service` Flag:** If a report explicitly contains `has_reported_field_service: false`, that report's `minutes` and `studies` are **not** included in the summary totals, even if they are positive. If the flag is `true` or absent/`null`, activity is based on positive minutes/studies.
+    *   **Pioneer Categorization:** Determined by the `pioneer` field in each monthly report:
+        *   `'Auxiliary'` -> 'Pyonye Oksilyè'
+        *   `'Regular'` -> 'Pyonye Pèmanan'
+        *   `'Special'` -> 'Pyonye Espesyal'
+        *   Other values (e.g., `null`, empty string, 'Publisher') -> 'Pwoklamatè ki pa Pyonye'.
+
+*   **Example Usage:**
+    *   With auto-detection of JSON file:
+        ```bash
+        fsr summary monthly-activity --month 2023-10
+        ```
+        *(fsr will search for `hourglass-export.json` or similar.)*
+
+    *   Specifying the JSON file:
+        ```bash
+        fsr --json-file path/to/your/data.json summary monthly-activity --month 2023-10
+        ```
+
+**2. Export Service Data to a New CSV File:**
+
+The `export export-csv` command creates a new CSV file containing a comprehensive report of service activity. It processes all available months from the reports in the input JSON and includes a row for every publisher for each of those months.
+
+*   **Command Structure:**
     ```bash
-    fsr summary monthly-activity --month 2023-10
+    fsr export export-csv --csv-file <PATH_TO_NEW_CSV_FILE>
     ```
-    *(fsr will search for `hourglass-export.json` or similar.)*
+*   **`--csv-file <PATH_TO_NEW_CSV_FILE>` Option:**
+    *   This option is **required**.
+    *   You must specify the full path (including filename, e.g., `path/to/my_new_report.csv`) where the new CSV file will be created.
+    *   Auto-detection of the output CSV path is not supported for this command.
 
-*   **Specifying the JSON file:**
-    ```bash
-    fsr --json-file path/to/your/data.json summary monthly-activity --month 2023-10
-    ```
+*   **Output Rows:**
+    *   For every unique month found across all reports in the input JSON data, a row is generated for *every publisher* listed in the `publishers` section of the JSON.
+    *   If a publisher has a specific report for a given month, that data is used to populate their row for that month.
+    *   If a publisher does *not* have a specific report for a given month (but that month exists in the overall dataset because other publishers reported), a row is still generated. In this case, it will contain default values indicating no activity for that specific publisher-month (e.g., `SharedInMinistry: False`, empty strings for hours, studies, etc.).
 
-**2. Update a CSV Export:**
+*   **CSV Columns:**
+    The generated CSV file will have the following columns:
+    `Date`, `FirstName`, `LastName`, `SharedInMinistry`, `BibleStudies`, `AP`, `Hours`, `Credit`, `Remarks`
 
-The `export update-csv` command updates an existing CSV file with data for a specific month.
-The `--csv-file <path_to_report.csv>` option for this command is also **optional**.
+*   **Key Field Logic Explanation:**
+    *   `Date`: Formatted as `YYYY-MM` (e.g., "2023-10").
+    *   `SharedInMinistry`: `True` if the report for that month indicates activity (positive `minutes` or `studies`). However, if the `has_reported_field_service` key is explicitly set to `false` in the source JSON for that specific report, `SharedInMinistry` will be `False`, overriding any inference from minutes or studies. Otherwise, it's `False`.
+    *   `AP` (Auxiliary Pioneer): `True` if `SharedInMinistry` is `True` AND the `pioneer` status in the report for that month is exactly `'Auxiliary'`. Otherwise `False`.
+    *   `Hours`: Calculated from `minutes` in the report (`minutes // 60`). Shown as a string representation of the whole number only if `SharedInMinistry` is `True` and the calculated hours value is `> 0`. Otherwise, it's an empty string.
+    *   `BibleStudies`: Shows the number of studies (as a string) if `SharedInMinistry` is `True` and the `studies` value from the report is `> 0`. Otherwise, it's an empty string.
+    *   `Credit`: Shows credit hours (as a string) if `SharedInMinistry` is `True` and the `credithours` value from the report is numerically `> 0`. Whole numbers are shown as integers (e.g., "5"), floats as floats (e.g., "1.5"). Otherwise, it's an empty string.
+    *   `Remarks`: Shows remarks from the report if present and not just whitespace (after stripping). Otherwise, it's an empty string.
 
-*   **If you provide the CSV file path** using `--csv-file`, `fsr` will use that specific file.
-*   **If you do not provide the CSV file path**, `fsr` will attempt to auto-detect it. It searches for files named `Descahos Rapò Sèvis.csv` or `FSGExtract.csv` (and their numbered variants like `Descahos Rapò Sèvis (1).csv`) in the current directory and your Downloads folder.
-*   Similar to JSON auto-detection, the latest version of the CSV file will be chosen if multiple are found.
-
-Here are various ways to use the `export update-csv` command:
-
-*   **Both JSON and CSV files specified:**
-    ```bash
-    fsr --json-file path/to/data.json export update-csv --csv-file path/to/report.csv --month 2023-10
-    ```
-
-*   **Only JSON file specified (CSV auto-detected):**
-    ```bash
-    fsr --json-file path/to/data.json export update-csv --month 2023-10
-    ```
-    *(fsr will search for `Descahos Rapò Sèvis.csv`, `FSGExtract.csv`, or similar for the CSV file.)*
-
-*   **Only CSV file specified (JSON auto-detected):**
-    ```bash
-    fsr export update-csv --csv-file path/to/report.csv --month 2023-10
-    ```
-    *(fsr will search for `hourglass-export.json` or similar for the JSON data.)*
-
-*   **Neither JSON nor CSV file specified (both auto-detected):**
-    ```bash
-    fsr export update-csv --month 2023-10
-    ```
-    *(fsr will search for both files in their respective default patterns and locations.)*
-
+*   **Example Usage:**
+    *   **With auto-detection of JSON file:**
+        ```bash
+        fsr export export-csv --csv-file path/to/my_new_report.csv
+        ```
+    *   **Specifying the JSON file:**
+        ```bash
+        fsr --json-file path/to/data.json export export-csv --csv-file path/to/my_new_report.csv
+        ```
 
 ## JSON Data Structure
 
@@ -104,17 +153,33 @@ Here are various ways to use the `export update-csv` command:
     *   `"user"`: A nested object with an `"id"` field matching a publisher's ID (e.g., `{"user": {"id": 123}}`).
     *   `"year"`: Integer, the year of the report (e.g., `2023`).
     *   `"month"`: Integer, the month of the report (e.g., `10` for October).
-    *   `"pioneer"`: String or `null`, indicating pioneer status (e.g., "Auxiliary Pioneer", "Regular", "Special", or `null`). Used by `get_publisher_role`.
-    *   `"studies"`: Integer, number of bible studies.
-    *   `"minutes"`: Integer, total minutes in service. (Note: For the `monthly-activity` summary, minutes for non-pioneers are ignored).
-    *   `"credithours"`: Integer or `null`, hours to be credited (assumed to be in hours).
-    *   `"remarks"`: String, any remarks for the report.
-    *   `"has_reported_field_service"`: Boolean (optional, defaults to `False` if missing). If this field is present, it must be `true` for the report's activity (minutes, studies) to be included in summaries and CSV exports. If this field is `false`, the person is considered to have not shared in service for that month for aggregation purposes.
+    *   `"pioneer"`: String or `null`, indicating pioneer status (e.g., "Auxiliary", "Regular", "Special", or `null`).
+    *   `"studies"`: Integer or `null`, number of bible studies.
+    *   `"minutes"`: Integer or `null`, total minutes in service.
+    *   `"credithours"`: Numeric (integer or float), string representation of a number, or `null`, for hours to be credited.
+    *   `"remarks"`: String or `null`, any remarks for the report.
+    *   `"has_reported_field_service"`: Boolean (`true`/`false`) or `null`. This field is optional.
+        *   If `true`, it confirms the publisher shared in service.
+        *   If `false`, it explicitly states the publisher did *not* share in service for that month.
+            *   For CSV export (`export export-csv`): Fields like `Hours`, `Studies`, `Credit` will be empty, and `AP` status will be `False`, regardless of other data in `minutes`, `studies`, etc. Remarks will still be preserved.
+            *   For summary reports (`summary monthly-activity`): The report's numeric activities (minutes, studies) are excluded from aggregation.
+        *   If `null` or absent:
+            *   For CSV export: Sharing status (`SharedInMinistry`) is inferred based on positive values in `minutes` or `studies`.
+            *   For summary reports: Active participation is inferred based on positive values in `minutes` or `studies`.
 
-### Note on `has_reported_field_service`
+### Note on Activity Determination (for CSV Export and Summaries)
 
-The `monthly-activity` summary and `update-csv` export commands rely on the `has_reported_field_service` field within each report object in your JSON data.
-- If this field is present and set to `true`, the publisher's activity (minutes, studies, etc.) for that month is included in aggregations.
-- If this field is `false`, or if the field is entirely **absent** from a report object, `fsr` will consider that publisher as not having reported field service for that month, and their specific activity metrics (minutes, studies) will generally be excluded or zeroed out in generated reports and exports (though they may still be listed as having 'SharedInMinistry: False' in a CSV update if a row exists for them).
+The determination of whether a publisher's activity is included or how `SharedInMinistry` is set depends on a combination of factors:
 
-Ensure your JSON data includes this field appropriately if you need fine-grained control over who is counted as an active reporter.
+1.  **`has_reported_field_service` flag (in JSON report data):**
+    *   **Explicit `false`:** This is a definitive indication of no participation.
+        *   In `export export-csv`: `SharedInMinistry` will be `False`. Consequently, `Hours`, `BibleStudies`, `Credit` will be empty, and `AP` will be `False`. `Remarks` are still shown.
+        *   In `summary monthly-activity`: This report's `minutes` and `studies` will be ignored for aggregation into totals. The publisher will not be counted as "reporting" for that category unless they have other qualifying reports for the same month (which is unlikely for a single person).
+    *   **Explicit `true`:** This is a definitive indication of participation.
+        *   In `export export-csv`: `SharedInMinistry` will be `True`. Other fields (`Hours`, `BibleStudies`, etc.) are then populated based on their specific rules (e.g., positive values).
+        *   In `summary monthly-activity`: The report's `minutes` and `studies` are included in aggregations if they are positive.
+    *   **`null` or Missing:** If the `has_reported_field_service` flag is not present or is `null`:
+        *   In `export export-csv`: `SharedInMinistry` is inferred. It becomes `True` if the report contains positive `minutes` OR positive `studies`; otherwise, it's `False`.
+        *   In `summary monthly-activity`: Active participation for aggregation is inferred. It's considered active if the report contains positive `minutes` OR positive `studies`.
+
+This nuanced handling allows for flexibility if the source JSON sometimes omits the `has_reported_field_service` flag, while still respecting it when it's explicitly provided.
