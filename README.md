@@ -5,7 +5,7 @@
 ## Features
 
 *   Load and parse service data from a structured JSON file.
-*   Auto-detects the main JSON data file (typically `hourglass-export.json`) if not specified.
+*   Auto-detects the main JSON data file if not specified.
 *   Generate monthly activity summary reports, detailing pioneer and publisher activity.
 *   Export service data to a new CSV file, providing a comprehensive view of activity across all months and publishers in the dataset.
 *   Modular design, allowing for future expansion with new report types or export formats.
@@ -101,11 +101,11 @@ The `fsr summary monthly-activity --month YYYY-MM` command generates a console-b
 
 **2. Export Service Data to a New CSV File:**
 
-The `export export-csv` command creates a new CSV file containing a comprehensive report of service activity. It processes all available months from the reports in the input JSON and includes a row for every publisher for each of those months.
+The `export field-service` command creates a new CSV file containing a comprehensive report of service activity. It processes all available months from the reports in the input JSON and includes a row for every publisher for each of those months.
 
 *   **Command Structure:**
     ```bash
-    fsr export export-csv --csv-file <PATH_TO_NEW_CSV_FILE>
+    fsr export field-service --csv-file <PATH_TO_NEW_CSV_FILE>
     ```
 *   **`--csv-file <PATH_TO_NEW_CSV_FILE>` Option:**
     *   This option is **required**.
@@ -133,11 +133,11 @@ The `export export-csv` command creates a new CSV file containing a comprehensiv
 *   **Example Usage:**
     *   **With auto-detection of JSON file:**
         ```bash
-        fsr export export-csv --csv-file path/to/my_new_report.csv
+        fsr export field-service --csv-file path/to/my_new_report.csv
         ```
     *   **Specifying the JSON file:**
         ```bash
-        fsr --json-file path/to/data.json export export-csv --csv-file path/to/my_new_report.csv
+        fsr --json-file path/to/data.json export field-service --csv-file path/to/my_new_report.csv
         ```
 
 ## JSON Data Structure
@@ -161,7 +161,7 @@ The `export export-csv` command creates a new CSV file containing a comprehensiv
     *   `"has_reported_field_service"`: Boolean (`true`/`false`) or `null`. This field is optional.
         *   If `true`, it confirms the publisher shared in service.
         *   If `false`, it explicitly states the publisher did *not* share in service for that month.
-            *   For CSV export (`export export-csv`): Fields like `Hours`, `Studies`, `Credit` will be empty, and `AP` status will be `False`, regardless of other data in `minutes`, `studies`, etc. Remarks will still be preserved.
+            *   For CSV export (`export field-service`): Fields like `Hours`, `Studies`, `Credit` will be empty, and `AP` status will be `False`, regardless of other data in `minutes`, `studies`, etc. Remarks will still be preserved.
             *   For summary reports (`summary monthly-activity`): The report's numeric activities (minutes, studies) are excluded from aggregation.
         *   If `null` or absent:
             *   For CSV export: Sharing status (`SharedInMinistry`) is inferred based on positive values in `minutes` or `studies`.
@@ -173,13 +173,13 @@ The determination of whether a publisher's activity is included or how `SharedIn
 
 1.  **`has_reported_field_service` flag (in JSON report data):**
     *   **Explicit `false`:** This is a definitive indication of no participation.
-        *   In `export export-csv`: `SharedInMinistry` will be `False`. Consequently, `Hours`, `BibleStudies`, `Credit` will be empty, and `AP` will be `False`. `Remarks` are still shown.
+        *   In `export field-service`: `SharedInMinistry` will be `False`. Consequently, `Hours`, `BibleStudies`, `Credit` will be empty, and `AP` will be `False`. `Remarks` are still shown.
         *   In `summary monthly-activity`: This report's `minutes` and `studies` will be ignored for aggregation into totals. The publisher will not be counted as "reporting" for that category unless they have other qualifying reports for the same month (which is unlikely for a single person).
     *   **Explicit `true`:** This is a definitive indication of participation.
-        *   In `export export-csv`: `SharedInMinistry` will be `True`. Other fields (`Hours`, `BibleStudies`, etc.) are then populated based on their specific rules (e.g., positive values).
+        *   In `export field-service`: `SharedInMinistry` will be `True`. Other fields (`Hours`, `BibleStudies`, etc.) are then populated based on their specific rules (e.g., positive values).
         *   In `summary monthly-activity`: The report's `minutes` and `studies` are included in aggregations if they are positive.
     *   **`null` or Missing:** If the `has_reported_field_service` flag is not present or is `null`:
-        *   In `export export-csv`: `SharedInMinistry` is inferred. It becomes `True` if the report contains positive `minutes` OR positive `studies`; otherwise, it's `False`.
+        *   In `export field-service`: `SharedInMinistry` is inferred. It becomes `True` if the report contains positive `minutes` OR positive `studies`; otherwise, it's `False`.
         *   In `summary monthly-activity`: Active participation for aggregation is inferred. It's considered active if the report contains positive `minutes` OR positive `studies`.
 
 This nuanced handling allows for flexibility if the source JSON sometimes omits the `has_reported_field_service` flag, while still respecting it when it's explicitly provided.
