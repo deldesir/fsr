@@ -23,14 +23,15 @@ def export_group():
     required=True,
     help="Path to CSV file to create."
 )
-@click.option('--month', 'target_month_str', required=True, help="The month for the data in YYYY-MM format.")
 @click.pass_context
-def export_csv_command(ctx: click.Context, csv_filepath: str, target_month_str: str):
+def export_csv_command(ctx: click.Context, csv_filepath: str):
     """
-    Exports congregation report data for a specific month to a new CSV file.
+    Exports all congregation report data for all publishers across all months to a new CSV file.
 
-    The CSV file will contain 'FirstName', 'LastName', 'Date', 'SharedInMinistry',
-    'AP', 'Hours', 'BibleStudies', 'Credit', 'Remarks' columns.
+    The CSV file will contain 'Date', 'FirstName', 'LastName', 'SharedInMinistry',
+    'BibleStudies', 'AP', 'Hours', 'Credit', 'Remarks' columns.
+    If a publisher has no reports, a single line with 'N/A' for Date and default values
+    for report fields will be included, with a remark indicating no reports were found.
     """
     if 'cong_data' not in ctx.obj or not isinstance(ctx.obj['cong_data'], CongregationData):
         click.echo(click.style("Error: Congregation data not loaded. Ensure JSON data is loaded first (e.g., via --json-file).", fg="red"), err=True)
@@ -39,16 +40,9 @@ def export_csv_command(ctx: click.Context, csv_filepath: str, target_month_str: 
 
     cong_data: CongregationData = ctx.obj['cong_data']
 
-    try:
-        target_year, target_month = parse_year_month(target_month_str)
-    except ValueError as e:
-        click.echo(click.style(f"Error: Invalid month format. {e}", fg="red"), err=True)
-        ctx.abort()
-        return
-
     fieldnames = [
-        'FirstName', 'LastName', 'Date', 'SharedInMinistry', 'AP',
-        'Hours', 'BibleStudies', 'Credit', 'Remarks'
+        'Date', 'FirstName', 'LastName', 'SharedInMinistry', 'BibleStudies',
+        'AP', 'Hours', 'Credit', 'Remarks'
     ]
 
     output_rows = []
@@ -57,59 +51,78 @@ def export_csv_command(ctx: click.Context, csv_filepath: str, target_month_str: 
         publisher_id = publisher['id']
         first_name = publisher['firstName']
         last_name = publisher['lastName']
+        publisher_has_any_reports = False
 
-        report = cong_data.reports_by_publisher_month_year.get((publisher_id, target_year, target_month))
+        # Iterate through all reports to find those matching this publisher
+        # Assuming reports_by_publisher_month_year is {(pub_id, year, month): report_dict}
+        for (report_pub_id, report_year, report_month), report_data in cong_data.reports_by_publisher_month_year.items():
+            if report_pub_id == publisher_id:
+                publisher_has_any_reports = True
 
-        row_data = {
-            'FirstName': first_name,
-            'LastName': last_name,
-            'Date': f"{target_year:04d}-{target_month:02d}-01",
-            'SharedInMinistry': False,
-            'AP': False,
-            'Hours': 0,
-            'BibleStudies': 0,
-            'Credit': '',
-            'Remarks': 'No report found for this month'
-        }
+                row_data = {
+                    'FirstName': first_name,
+                    'LastName': last_name,
+                    'Date': f"{report_year:04d}-{report_month:02d}-01",
+                    'SharedInMinistry': False,
+                    'AP': False,
+                    'Hours': 0,
+                    'BibleStudies': 0,
+                    'Credit': '',
+                    'Remarks': '' # Default empty, will be overridden
+                }
 
-        if report and report.get('has_reported_field_service', False):
-            role = get_publisher_role(report.get('pioneer'))
-            minutes_raw = report.get('minutes')
-            studies_raw = report.get('studies')
-            credit_raw = report.get('credithours') # Assuming 'credithours' is the key from JSON
+                if report_data and report_data.get('has_reported_field_service', False):
+                    role = get_publisher_role(report_data.get('pioneer'))
+                    minutes_raw = report_data.get('minutes')
+                    studies_raw = report_data.get('studies')
+                    credit_raw = report_data.get('credithours')
 
-            try:
-                minutes = int(minutes_raw) if minutes_raw is not None else 0
-            except (ValueError, TypeError):
-                minutes = 0
-            try:
-                studies = int(studies_raw) if studies_raw is not None else 0
-            except (ValueError, TypeError):
-                studies = 0
+                    try:
+                        minutes = int(minutes_raw) if minutes_raw is not None else 0
+                    except (ValueError, TypeError):
+                        minutes = 0
+                    try:
+                        studies = int(studies_raw) if studies_raw is not None else 0
+                    except (ValueError, TypeError):
+                        studies = 0
 
-            credit_val = ''
-            if isinstance(credit_raw, (int, float)):
-                credit_val = str(credit_raw)
-            elif isinstance(credit_raw, str):
-                credit_val = credit_raw.strip()
+                    credit_val = ''
+                    if isinstance(credit_raw, (int, float)):
+                        credit_val = str(credit_raw)
+                    elif isinstance(credit_raw, str):
+                        credit_val = credit_raw.strip()
 
-            row_data['SharedInMinistry'] = True
-            row_data['AP'] = (role == ROLE_AUXILIARY_PIONEER)
+                    row_data['SharedInMinistry'] = True
+                    row_data['AP'] = (role == ROLE_AUXILIARY_PIONEER)
 
-            if role in ALL_PIONEER_ROLES:
-                row_data['Hours'] = minutes // 60
-            else:
-                row_data['Hours'] = 0 # Per requirement, non-pioneers Hours = 0
+                    if role in ALL_PIONEER_ROLES:
+                        row_data['Hours'] = minutes // 60
+                    else:
+                        row_data['Hours'] = 0
 
-            row_data['BibleStudies'] = studies
-            row_data['Credit'] = credit_val
-            row_data['Remarks'] = report.get('remarks', '').strip()
-        elif report and not report.get('has_reported_field_service', False):
-            # Has a report, but did not report field service
-            row_data['Remarks'] = 'Did not report field service'
-            # Other fields remain as default (False, 0, empty string)
+                    row_data['BibleStudies'] = studies
+                    row_data['Credit'] = credit_val
+                    row_data['Remarks'] = report_data.get('remarks', '').strip()
+                elif report_data: # Report exists but not field service
+                    row_data['Remarks'] = 'Did not report field service'
+                else: # Should not happen if iterating items from reports_by_publisher_month_year
+                    row_data['Remarks'] = 'Error: Report data missing unexpectedly'
 
-        output_rows.append(row_data)
+                output_rows.append(row_data)
+
+        if not publisher_has_any_reports:
+            # Add a single row for publishers with no reports at all
+            output_rows.append({
+                'FirstName': first_name,
+                'LastName': last_name,
+                'Date': 'N/A',
+                'SharedInMinistry': False,
+                'AP': False,
+                'Hours': 0,
+                'BibleStudies': 0,
+                'Credit': '',
+                'Remarks': 'No reports found for this publisher'
+            })
 
     temp_csv_filepath = csv_filepath + ".tmp"
     try:
@@ -119,7 +132,7 @@ def export_csv_command(ctx: click.Context, csv_filepath: str, target_month_str: 
             writer.writerows(output_rows)
 
         os.replace(temp_csv_filepath, csv_filepath)
-        click.echo(click.style(f"CSV file '{csv_filepath}' created successfully for month {target_month_str}.", fg="green"))
+        click.echo(click.style(f"CSV file '{csv_filepath}' created successfully.", fg="green"))
 
     except Exception as e:
         click.echo(click.style(f"Error writing CSV file '{csv_filepath}': {e}", fg="red"), err=True)
