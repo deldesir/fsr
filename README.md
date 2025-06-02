@@ -65,7 +65,7 @@ Below are examples of common commands.
 
 The `fsr summary monthly-activity --month YYYY-MM` command generates a console-based summary report of congregation activity for the specified month.
 
-*   **Output Details:** The summary is presented in French/Haitian Creole and includes the following categories:
+*   **Output Details:** The summary is presented in Haitian Creole and includes the following categories:
     *   'Pwoklamatè ki pa Pyonye' (Non-Pioneer Publishers)
     *   'Pyonye Oksilyè' (Auxiliary Pioneers)
     *   'Pyonye Pèmanan' (Regular Pioneers)
