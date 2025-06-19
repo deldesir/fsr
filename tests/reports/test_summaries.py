@@ -2,171 +2,237 @@ import unittest
 import json
 import tempfile
 import os
+import datetime # Added
+from unittest.mock import patch # Added
 from click.testing import CliRunner
 from collections import defaultdict
 
-# Assuming 'fsr.cli:cli' is the entry point for the main CLI application
-# and that 'fsr.core.data_loader.CongregationData' is the data structure used.
-# We need to be able to invoke the 'summary monthly-activity' command.
-# This might require access to the main 'cli' object from 'fsr.cli'.
-# For simplicity, if direct invocation of monthly_activity_report is possible and preferred for unit testing,
-# that would be an alternative, but testing via CLI runner is more end-to-end for commands.
-
-# To test CLI:
-# from fsr.cli import cli # Or however your main CLI group is defined
-
-# For this test, we'll prepare a mock JSON file that can be loaded by CongregationData via the CLI's --json-file option.
+# Assuming 'fsr.cli:cli' is the entry point for the main CLI application.
+# We will continue to test via CLI runner for end-to-end command testing.
 
 class TestMonthlyActivityReport(unittest.TestCase):
     def setUp(self):
         self.runner = CliRunner()
         self.maxDiff = None # Show full diffs
 
-        # Mock data for summaries - based on user's anonymized data and scenarios
+        # Mock data for summaries, updated for new features
         self.mock_data_for_summaries = {
             "congregation": {},
             "publishers": [
-                {"id": "1000001", "firstname": "Michael", "lastname": "Edwards"},
-                {"id": "1000002", "firstname": "Stephanie", "lastname": "Roman"},
-                {"id": "1000003", "firstname": "Carol", "lastname": "Mitchell"},
-                {"id": "1000004", "firstname": "Carl", "lastname": "Smith"},
-                {"id": "1000005", "firstname": "Jason", "lastname": "Nguyen"},
-                {"id": "1000006", "firstname": "Gabriel", "lastname": "Williams"},
-                {"id": "1000007", "firstname": "Joel", "lastname": "Jenkins"},
-                {"id": "1000008", "firstname": "Jacqueline", "lastname": "Moore"},
-                {"id": "1000009", "firstname": "Crystal", "lastname": "Anderson"},
-                {"id": "1000010", "firstname": "Matthew", "lastname": "Jones"}
+                {"id": "1000001", "firstname": "Michael", "lastname": "Edwards"}, # Inactive
+                {"id": "1000002", "firstname": "Stephanie", "lastname": "Roman"}, # Aux Pioneer
+                {"id": "1000003", "firstname": "Carol", "lastname": "Mitchell"},    # Publisher
+                {"id": "1000004", "firstname": "Carl", "lastname": "Smith"},       # Publisher
+                {"id": "1000005", "firstname": "Jason", "lastname": "Nguyen"},     # Reg Pioneer
+                {"id": "1000006", "firstname": "Gabriel", "lastname": "Williams"}, # Special Pioneer (activity excluded from summary)
+                {"id": "1000007", "firstname": "Joel", "lastname": "Jenkins"},     # Aux Pioneer
+                {"id": "1000008", "firstname": "Jacqueline", "lastname": "Moore"}  # Publisher (reports, 0 activity)
             ],
             "reports": [
                 # Month 1: 2026-08 (Active Month)
-                {"year": 2026, "month": 8, "user": {"id": "1000001"}, "pioneer": None, "has_reported_field_service": False, "minutes": None, "studies": None, "remarks": "Vacation"}, # Not counted in summary
-                {"year": 2026, "month": 8, "user": {"id": "1000002"}, "pioneer": "Auxiliary", "has_reported_field_service": True, "minutes": 3000, "studies": 5, "remarks": ""}, # AP: 50hr, 5st
-                {"year": 2026, "month": 8, "user": {"id": "1000003"}, "pioneer": None, "has_reported_field_service": True, "minutes": 60, "studies": 1, "remarks": ""},       # Pub: 1hr (not summed), 1st
-                {"year": 2026, "month": 8, "user": {"id": "1000004"}, "pioneer": "Publisher", "has_reported_field_service": True, "minutes": 120, "studies": 2, "remarks": "Good job"}, # Pub: 2hr (not summed), 2st
-                {"year": 2026, "month": 8, "user": {"id": "1000005"}, "pioneer": "Regular", "has_reported_field_service": True, "minutes": 600, "studies": None, "remarks": ""}, # RP: 10hr, 0st
-                {"year": 2026, "month": 8, "user": {"id": "1000006"}, "pioneer": "Special", "has_reported_field_service": True, "minutes": 0, "studies": 3}, # SP: 0hr, 3st. Active by studies.
-                {"year": 2026, "month": 8, "user": {"id": "1000007"}, "pioneer": "Auxiliary", "has_reported_field_service": True, "minutes": 30, "studies": 0}, # AP: active by minutes, but <1hr, 0 studies
-                {"year": 2026, "month": 8, "user": {"id": "1000008"}, "pioneer": None, "has_reported_field_service": True, "minutes": 0, "studies": 0, "remarks": "Reported, no activity"}, # Active by explicit True, but 0 activity.
+                {"year": 2026, "month": 8, "user": {"id": "1000001"}, "pioneer": None, "has_reported_field_service": False, "minutes": None, "studies": None},
+                {"year": 2026, "month": 8, "user": {"id": "1000002"}, "pioneer": "Auxiliary", "has_reported_field_service": True, "minutes": 3000, "studies": 5}, # AP1: 50hr, 5st
+                {"year": 2026, "month": 8, "user": {"id": "1000003"}, "pioneer": None, "has_reported_field_service": True, "minutes": 60, "studies": 1},          # Pub1: 1st
+                {"year": 2026, "month": 8, "user": {"id": "1000004"}, "pioneer": "Publisher", "has_reported_field_service": True, "minutes": 120, "studies": 2},    # Pub2: 2st
+                {"year": 2026, "month": 8, "user": {"id": "1000005"}, "pioneer": "Regular", "has_reported_field_service": True, "minutes": 600, "studies": None},   # RP1: 10hr, 0st
+                {"year": 2026, "month": 8, "user": {"id": "1000006"}, "pioneer": "Special", "has_reported_field_service": True, "minutes": 0, "studies": 3},     # SP1: 0hr, 3st (EXCLUDED from this report)
+                {"year": 2026, "month": 8, "user": {"id": "1000007"}, "pioneer": "Auxiliary", "has_reported_field_service": True, "minutes": 30, "studies": 0},      # AP2: 0hr (30min), 0st
+                {"year": 2026, "month": 8, "user": {"id": "1000008"}, "pioneer": None, "has_reported_field_service": True, "minutes": 0, "studies": 0},          # Pub3: Reports, 0 activity
 
-
-                # Month 2: 2026-09 (No Activity Month for summary check)
-                # All reports have has_reported_field_service: False or no positive minutes/studies
-                {"year": 2026, "month": 9, "user": {"id": "1000001"}, "pioneer": None, "has_reported_field_service": False, "remarks": "Still out"},
+                # Month 2: 2026-09 (No Activity Month)
+                {"year": 2026, "month": 9, "user": {"id": "1000001"}, "pioneer": None, "has_reported_field_service": False},
                 {"year": 2026, "month": 9, "user": {"id": "1000002"}, "pioneer": "Auxiliary", "has_reported_field_service": True, "minutes": 0, "studies": 0},
                 {"year": 2026, "month": 9, "user": {"id": "1000003"}, "pioneer": None, "has_reported_field_service": False},
+                {"year": 2026, "month": 9, "user": {"id": "1000006"}, "pioneer": "Special", "has_reported_field_service": False}, # SP inactive this month
+            ],
+            "attendance": [ # Added
+                {"month": "2026-08", "mwAvg": 0, "mwCount": 0, "mwTotal": 0, "weAvg": 150, "weCount": 4, "weTotal": 600},
+                {"month": "2026-09", "mwAvg": 0, "mwCount": 0, "mwTotal": 0, "weAvg": 0, "weCount": 0, "weTotal": 0}
             ]
         }
 
-    def _run_summary_command(self, month_str):
+    def _run_summary_command(self, month_str: str = None): # Modified signature
         with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json") as tmp_json_file:
             json.dump(self.mock_data_for_summaries, tmp_json_file)
             tmp_json_file_path = tmp_json_file.name
         
-        # Assumes 'fsr' is callable via CLI after 'pip install -e .'
-        # The path might need to be ~/.local/bin/fsr if not in main PATH
         cli_path = "~/.local/bin/fsr" 
-        if not os.path.exists(os.path.expanduser(cli_path)): # Fallback for environments where it might be in main path
+        if not os.path.exists(os.path.expanduser(cli_path)):
              cli_path = "fsr"
 
+        cmd = [cli_path, '--json-file', tmp_json_file_path, 'summary', 'monthly-activity']
+        if month_str:
+            cmd.extend(['--month', month_str])
+
         result = self.runner.invoke(
-            None, # We need to invoke the top-level CLI group if it's defined in fsr.cli.cli
-            [cli_path, '--json-file', tmp_json_file_path, 'summary', 'monthly-activity', '--month', month_str],
-            catch_exceptions=False, # Let exceptions propagate for debugging
-            prog_name="fsr" # Helps Click identify the command if fsr.cli.cli is a group
+            None,
+            cmd, # Use the constructed cmd list
+            catch_exceptions=False,
+            prog_name="fsr"
         )
         os.remove(tmp_json_file_path)
         return result
 
     def test_monthly_activity_with_data(self):
-        """Test summary for a month with various activities."""
+        """Test summary for a month with various activities, new format."""
         result = self._run_summary_command("2026-08")
         self.assertEqual(result.exit_code, 0, f"CLI Error: {result.output}")
-        output = result.output
+        output = result.output.replace("\r\n", "\n") # Normalize line endings
 
-        # Expected values for 2026-08 based on current summary logic
-        # Pwoklamatè ki pa pyonye (Non-Pioneers):
-        #   1000003: 1st (60 min, not counted for hours)
-        #   1000004: 2st (120 min, not counted for hours)
-        #   1000008: 0st, 0min (active by explicit True in CSV exports, but summary logic infers from min/studies)
-        #     -> Summary logic: Pub 1000003 (studies>0), Pub 1000004 (studies>0). Pub 1000008 has 0 min/studies, so NOT counted.
-        #   Count = 2, Total Studies = 1 + 2 = 3
-        self.assertIn("*Rapò pou Pwoklamatè Ki Pa Pyonye (08-2026)*", output)
-        self.assertIn("Total Etid: 3", output) # 1 (Carol) + 2 (Carl) = 3
-        self.assertIn("_Te gen 2 pwoklamatè ki pa pyonye ki te bay rapò pou mwa sa._", output)
+        # Expected values for 2026-08 (Special Pioneer 1000006 excluded)
+        # Total Active Publishers (non-special):
+        #   1000002 (AP), 1000003 (Pub), 1000004 (Pub), 1000005 (RP), 1000007 (AP), 1000008 (Pub) = 6
+        self.assertIn("Tous les proclamateurs actifs", output)
+        self.assertIn("6", output) # This needs to be specific. A simple "In" might catch other 6s.
+                                     # We'll check its position relative to the label later if needed.
 
-        # Pyonye Oksilyè (Auxiliary Pioneers):
-        #   1000002: 50hr, 5st
-        #   1000007: 0hr (30min), 0st (active by positive minutes)
-        #   Count = 2, Total Hours = 50 + 0 = 50, Total Studies = 5 + 0 = 5
-        self.assertIn("*Rapò pou Pyonye Oksilyè (08-2026)*", output)
-        self.assertIn("Total Lè: 50", output)
-        self.assertIn("Total Etid: 5", output)
-        self.assertIn("_Te gen 2 pyonye oksilyè ki te bay rapò pou mwa sa._", output)
+        # Weekend Avg Attendance: 150
+        self.assertIn("Assistance moyenne à la réunion de week-end", output)
+        self.assertIn("150", output) # Similar specificity concern as above.
+
+        # Proclamateurs (Publishers):
+        #   1000003: 1st
+        #   1000004: 2st
+        #   1000008: 0st (reports, counts for S-4)
+        #   Count S-4: 3. Studies: 1 + 2 = 3. Hours: Not shown.
+        # Expected output snippet for Proclamateurs:
+        # Proclamateurs
+        # Nombre de fiches d’activité (S-4)
+        # 3
+        # Cours bibliques
+        # 3
+        proclamateurs_header = "Proclamateurs"
+        self.assertIn(f"{proclamateurs_header}\nNombre de fiches d’activité (S-4)\n3", output)
+        self.assertIn(f"Cours bibliques\n3", output) # This will be within the Proclamateurs section
+        self.assertNotIn("Heures", output.split(proclamateurs_header)[1].split("Pionniers auxiliaires")[0])
+
+
+        # Pionniers auxiliaires:
+        #   1000002: 50hr (from 3000min), 5st
+        #   1000007: 0hr (from 30min), 0st
+        #   Count S-4: 2. Hours: 50. Studies: 5.
+        # Expected output snippet:
+        # Pionniers auxiliaires
+        # Nombre de fiches d’activité (S-4)
+        # 2
+        # Heures
+        # 50
+        # Cours bibliques
+        # 5
+        aux_pionniers_header = "Pionniers auxiliaires"
+        perm_pionniers_header = "Pionniers permanents" # Delimiter for section end
         
-        # Pyonye Pèmanan (Regular Pioneers):
-        #   1000005: 10hr, 0st (studies is null)
-        #   Count = 1, Total Hours = 10, Total Studies = 0
-        self.assertIn("*Rapò pou Pyonye Pèmanan (08-2026)*", output)
-        self.assertIn("Total Lè: 10", output)
-        self.assertIn("Total Etid: 0", output)
-        self.assertIn("_Te gen 1 pyonye pèmanan ki te bay rapò pou mwa sa._", output)
+        # Extracting section more robustly
+        try:
+            aux_section = output.split(aux_pionniers_header)[1].split(perm_pionniers_header)[0]
+        except IndexError:
+            self.fail(f"'{aux_pionniers_header}' or '{perm_pionniers_header}' not found in output or in wrong order.")
 
-        # Pyonye Espesyal (Special Pioneers):
-        #   1000006: 0hr (0 min), 3st (active by studies)
-        #   Count = 1, Total Hours = 0, Total Studies = 3
-        self.assertIn("*Rapò pou Pyonye Espesyal (08-2026)*", output)
-        self.assertIn("Total Lè: 0", output)
-        self.assertIn("Total Etid: 3", output)
-        self.assertIn("_Te gen 1 pyonye espesyal ki te bay rapò pou mwa sa._", output)
+        self.assertIn("Nombre de fiches d’activité (S-4)\n2", aux_section)
+        self.assertIn("Heures\n50", aux_section)
+        self.assertIn("Cours bibliques\n5", aux_section)
 
-        # Total Congregation Studies: 3 (Pub) + 5 (AP) + 0 (RP) + 3 (SP) = 11
-        self.assertIn("Total Etid Kongregasyon an: 11", output)
-        
-        # Check that 1000001 (Vacation, has_reported_field_service: False) is not counted anywhere
-        # Check that 1000008 (0 min, 0 studies) is not counted as pwoklamatè
-        # (This is implicitly checked by the counts above)
+        # Pionniers permanents:
+        #   1000005: 10hr, 0st
+        #   Count S-4: 1. Hours: 10. Studies: 0.
+        # Expected output snippet:
+        # Pionniers permanents
+        # Nombre de fiches d’activité (S-4)
+        # 1
+        # Heures
+        # 10
+        # Cours bibliques
+        # 0
+        try:
+            perm_section = output.split(perm_pionniers_header)[1].split("\n-----------------------------")[0]
+        except IndexError:
+            self.fail(f"'{perm_pionniers_header}' not found or structure changed.")
+
+        self.assertIn("Nombre de fiches d’activité (S-4)\n1", perm_section)
+        self.assertIn("Heures\n10", perm_section)
+        self.assertIn("Cours bibliques\n0", perm_section)
+
+        self.assertNotIn("Pyonye espesyal", output) # Special pioneers section should not exist
+        self.assertNotIn("Total Etid Kongregasyon an", output) # This line is removed
+
+        # Check overall counts more directly if possible (e.g. after "Tous les proclamateurs actifs")
+        # This is tricky with simple assertIn. The section-based approach is better.
+        # A more direct way to check "Tous les proclamateurs actifs\n6"
+        self.assertIn("Tous les proclamateurs actifs\n6", output)
+        self.assertIn("Assistance moyenne à la réunion de week-end\n150", output)
+
 
     def test_monthly_activity_no_activity(self):
-        """Test summary for a month with no qualifying activity."""
+        """Test summary for a month with no qualifying activity, new format."""
         result = self._run_summary_command("2026-09")
         self.assertEqual(result.exit_code, 0, f"CLI Error: {result.output}")
-        output = result.output
-        
-        # For 2026-09:
-        # 1000001: has_reported_field_service: False -> ignored
-        # 1000002: AP, 0 min, 0 studies -> not counted as active by summary logic (needs >0 min or >0 studies)
-        # 1000003: has_reported_field_service: False -> ignored
-        # So, all counts should be 0.
+        output = result.output.replace("\r\n", "\n")
 
-        self.assertIn("*Rapò pou Pwoklamatè Ki Pa Pyonye (09-2026)*", output)
-        self.assertIn("Total Etid: 0", output)
-        self.assertIn("_Te gen 0 pwoklamatè ki pa pyonye ki te bay rapò pou mwa sa._", output)
+        self.assertIn("Tous les proclamateurs actifs\n0", output)
+        self.assertIn("Assistance moyenne à la réunion de week-end\nN/A", output) # 0 attendance -> N/A
 
-        self.assertIn("*Rapò pou Pyonye Oksilyè (09-2026)*", output)
-        self.assertIn("Total Lè: 0", output)
-        self.assertIn("Total Etid: 0", output)
-        self.assertIn("_Te gen 0 pyonye oksilyè ki te bay rapò pou mwa sa._", output)
-        
-        self.assertIn("*Rapò pou Pyonye Pèmanan (09-2026)*", output)
-        self.assertIn("Total Lè: 0", output)
-        self.assertIn("Total Etid: 0", output)
-        self.assertIn("_Te gen 0 pyonye pèmanan ki te bay rapò pou mwa sa._", output)
+        self.assertIn("Proclamateurs\nNombre de fiches d’activité (S-4)\n0", output)
+        self.assertIn("Cours bibliques\n0", output.split("Proclamateurs")[1].split("Pionniers auxiliaires")[0]) # Check studies for Proclamateurs is 0
 
-        self.assertIn("*Rapò pou Pyonye Espesyal (09-2026)*", output)
-        self.assertIn("Total Lè: 0", output)
-        self.assertIn("Total Etid: 0", output)
-        self.assertIn("_Te gen 0 pyonye espesyal ki te bay rapò pou mwa sa._", output)
+        aux_section = output.split("Pionniers auxiliaires")[1].split("Pionniers permanents")[0]
+        self.assertIn("Nombre de fiches d’activité (S-4)\n0", aux_section)
+        self.assertIn("Heures\n0", aux_section)
+        self.assertIn("Cours bibliques\n0", aux_section)
+
+        perm_section = output.split("Pionniers permanents")[1].split("\n-----------------------------")[0]
+        self.assertIn("Nombre de fiches d’activité (S-4)\n0", perm_section)
+        self.assertIn("Heures\n0", perm_section)
+        self.assertIn("Cours bibliques\n0", perm_section)
         
-        self.assertIn("Total Etid Kongregasyon an: 0", output)
+        self.assertNotIn("Pyonye espesyal", output)
         self.assertIn("Note: Pa gen rapò ki disponib pou mwa 2026-09.", output)
 
-if __name__ == '__main__':
-    # This allows running the tests directly if the fsr module is in PYTHONPATH
-    # For the agent, direct execution isn't the primary concern, but good for local testing.
-    # Need to ensure fsr.cli can be imported or use a different way to get 'cli' group.
-    # The CliRunner().invoke(None, ...) with full path to fsr script is more robust in this env.
-    
-    # To make fsr.cli.cli available for CliRunner().invoke(cli, ...)
-    # we would need to ensure the path is set up, or the package is installed.
-    # The current _run_summary_command tries to handle this.
-    unittest.main(argv=['first-arg-is-ignored'], exit=False)
+    @patch('fsr.reports.summaries.datetime.datetime') # Path to datetime used in summaries.py
+    def test_monthly_activity_default_month(self, mock_datetime):
+        # Configure mock_datetime.now() to return a date that makes "2026-08" the current month
+        mock_now = datetime.datetime(2026, 8, 15) # Example: 15th August 2026
+        mock_datetime.now.return_value = mock_now
+
+        expected_month_str = "2026-08"
+
+        result = self._run_summary_command() # No month_str argument
+        self.assertEqual(result.exit_code, 0, f"CLI Error: {result.output}")
+        output = result.output.replace("\r\n", "\n")
+
+        self.assertIn(f"Info: --month not provided, defaulting to current month ({expected_month_str})", output)
+
+        # Assertions for 2026-08 data (adapted from test_monthly_activity_with_data)
+        self.assertIn("Tous les proclamateurs actifs\n6", output)
+        self.assertIn("Assistance moyenne à la réunion de week-end\n150", output)
+
+        # Proclamateurs
+        proclamateurs_header = "Proclamateurs"
+        # Check for the full block for Proclamateurs to ensure numbers are in the right place
+        expected_proclamateurs_block = f"{proclamateurs_header}\nNombre de fiches d’activité (S-4)\n3\nCours bibliques\n3"
+        self.assertIn(expected_proclamateurs_block, output)
+        self.assertNotIn("Heures", output.split(proclamateurs_header)[1].split("Pionniers auxiliaires")[0])
+
+        # Pionniers auxiliaires
+        aux_pionniers_header = "Pionniers auxiliaires"
+        perm_pionniers_header = "Pionniers permanents"
+        try:
+            aux_section = output.split(aux_pionniers_header)[1].split(perm_pionniers_header)[0]
+        except IndexError:
+            self.fail(f"'{aux_pionniers_header}' or '{perm_pionniers_header}' not found in output for default month test.")
+
+        self.assertIn("Nombre de fiches d’activité (S-4)\n2", aux_section)
+        self.assertIn("Heures\n50", aux_section)
+        self.assertIn("Cours bibliques\n5", aux_section)
+
+        # Pionniers permanents
+        try:
+            perm_section = output.split(perm_pionniers_header)[1].split("\n-----------------------------")[0]
+        except IndexError:
+            self.fail(f"'{perm_pionniers_header}' not found or structure changed for default month test.")
+
+        self.assertIn("Nombre de fiches d’activité (S-4)\n1", perm_section)
+        self.assertIn("Heures\n10", perm_section)
+        self.assertIn("Cours bibliques\n0", perm_section)
+
+        self.assertNotIn("Pyonye espesyal", output)
+# Removed: if __name__ == '__main__': unittest.main(...)
