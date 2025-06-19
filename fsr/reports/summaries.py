@@ -15,7 +15,7 @@ def summary_group():
     pass
 
 @summary_group.command('monthly-activity')
-@click.option('--month', 'target_month_str', required=False, default=None, help="The month for the report in YYYY-MM format. Defaults to the current month if not provided.")
+@click.option('--month', 'target_month_str', required=False, default=None, help="The month for the report in YYYY-MM format. Defaults to the *previous* month if not provided.")
 @click.pass_context
 def monthly_activity_report(ctx: click.Context, target_month_str: str):
     """
@@ -30,8 +30,10 @@ def monthly_activity_report(ctx: click.Context, target_month_str: str):
 
     if target_month_str is None:
         now = datetime.datetime.now()
-        target_month_str = now.strftime("%Y-%m")
-        click.echo(f"Info: --month not provided, defaulting to current month ({target_month_str}).")
+        first_day_of_current_month = now.replace(day=1)
+        last_day_of_previous_month = first_day_of_current_month - datetime.timedelta(days=1)
+        target_month_str = last_day_of_previous_month.strftime('%Y-%m')
+        click.echo(f"Info: --month not provided, defaulting to previous month ({target_month_str}).", fg="blue")
 
     try:
         target_year, target_month = parse_year_month(target_month_str)
@@ -40,134 +42,128 @@ def monthly_activity_report(ctx: click.Context, target_month_str: str):
         ctx.abort()
         return
 
-    # Initialize Summary Data Structures (New)
-    summary_data = {
-        'publishers': defaultdict(int),      # For 'Proclamateurs'
-        'aux_pioneers': defaultdict(int),    # For 'Pionniers auxiliaires'
-        'reg_pioneers': defaultdict(int),    # For 'Pionniers permanents'
-    }
-    reporting_publishers_by_category = {
+    # Initialization
+    categorized_s4_counts = {
         'publishers': set(),
         'aux_pioneers': set(),
-        'reg_pioneers': set(),
+        'reg_pioneers': set()
     }
-    all_active_reporters = set() # To count unique publishers who reported (excluding special)
+    categorized_minutes = defaultdict(int)
+    categorized_studies = defaultdict(int)
+
+    active_non_sp_publishers_set = set() # For average calculations (denominator)
+    total_non_sp_reporters_set = set()   # For "Kantite pwoklamatè" and "Tous les proclamateurs actifs" (excluding SPs)
+
+    special_pioneer_reporters_count = 0 # Count of SPs who reported
+
+    total_minutes_for_report_display = 0 # Sum of minutes from non-SPs
+    total_studies_for_report_display = 0 # Sum of studies from non-SPs
 
     # Processing Loop
-    for (pub_id, r_year, r_month), report in cong_data.reports_by_publisher_month_year.items():
+    for (pub_id, r_year, r_month), report_data in cong_data.reports_by_publisher_month_year.items():
         if not (r_year == target_year and r_month == target_month):
             continue
 
-        # Exclude Special Pioneers
-        if report.get('pioneer') == 'Special':
+        publisher_details = cong_data.publishers_by_id.get(pub_id, {})
+        pioneer_status_from_report = report_data.get('pioneer') # Status from S-1 report
+
+        # Determine if Special Pioneer
+        is_special_pioneer = (pioneer_status_from_report == 'Special' or
+                              publisher_details.get('reportstobranch') is True)
+
+        if is_special_pioneer:
+            special_pioneer_reporters_count += 1
+            # SPs are excluded from all other detailed stats in this report version
             continue
 
-        # Infer has_reported_service and get current_minutes, current_studies
-        minutes_raw = report.get('minutes')
-        studies_raw = report.get('studies')
+        # If NOT a Special Pioneer:
+        total_non_sp_reporters_set.add(pub_id) # Count this non-SP publisher as having reported
 
-        has_reported_service = False
+        current_minutes_raw = report_data.get('minutes')
+        current_studies_raw = report_data.get('studies')
+
         current_minutes = 0
+        if current_minutes_raw is not None:
+            try:
+                minutes_val = int(current_minutes_raw)
+                if minutes_val > 0:
+                    current_minutes = minutes_val
+            except (ValueError, TypeError):
+                pass
+        
         current_studies = 0
-
-        if minutes_raw is not None:
+        if current_studies_raw is not None:
             try:
-                current_minutes = int(minutes_raw)
-                if current_minutes < 0: current_minutes = 0 # Treat negative as zero
-                if current_minutes > 0:
-                    has_reported_service = True
+                studies_val = int(current_studies_raw)
+                if studies_val > 0:
+                    current_studies = studies_val
             except (ValueError, TypeError):
-                current_minutes = 0
+                pass
         
-        if studies_raw is not None:
-            try:
-                current_studies = int(studies_raw)
-                if current_studies < 0: current_studies = 0 # Treat negative as zero
-                if current_studies > 0:
-                    has_reported_service = True 
-            except (ValueError, TypeError):
-                current_studies = 0
-        
-        if report.get('has_reported_field_service') == False:
-            has_reported_service = False
-            current_minutes = 0
-            current_studies = 0
-
-        if not has_reported_service:
-            continue 
-
-        all_active_reporters.add(pub_id)
-
-        # Categorize Publisher (Revised)
-        pioneer_status_from_report = report.get('pioneer')
+        # Determine category for non-SP
         category_key = ''
         if pioneer_status_from_report == 'Auxiliary':
             category_key = 'aux_pioneers'
         elif pioneer_status_from_report == 'Regular':
             category_key = 'reg_pioneers'
-        else: 
+        else:
             category_key = 'publishers' # Default to publishers
+
+        categorized_s4_counts[category_key].add(pub_id)
+        categorized_minutes[category_key] += current_minutes
+        categorized_studies[category_key] += current_studies
+
+        total_minutes_for_report_display += current_minutes
+        total_studies_for_report_display += current_studies
         
-        # Aggregate Data
-        summary_data[category_key]['minutes'] += current_minutes
-        summary_data[category_key]['studies'] += current_studies
-        reporting_publishers_by_category[category_key].add(pub_id)
+        # Active for averages means positive minutes OR studies
+        if current_minutes > 0 or current_studies > 0:
+            active_non_sp_publishers_set.add(pub_id)
 
     # Post-Loop Calculations
-    for cat_key, cat_data in summary_data.items():
-        cat_data['count'] = len(reporting_publishers_by_category[cat_key])
-        cat_data['hours_display'] = cat_data.get('minutes', 0) // 60
+    val_kantite_pwoklamate_header = len(total_non_sp_reporters_set)
+    val_pyonye_permanan_count = len(categorized_s4_counts['reg_pioneers'])
+    val_pyonye_oksilye_count = len(categorized_s4_counts['aux_pioneers'])
+    val_pwoklamate_count = len(categorized_s4_counts['publishers'])
 
-    total_active_publishers_count = len(all_active_reporters)
+    val_total_edtans = total_minutes_for_report_display / 60.0
+    val_total_etid_biblik = total_studies_for_report_display
 
-    # Fetch Meeting Attendance
+    val_mwayen_pwoklamate_patisipe = len(active_non_sp_publishers_set)
+
+    val_mwayen_edtan = (val_total_edtans / val_mwayen_pwoklamate_patisipe) if val_mwayen_pwoklamate_patisipe > 0 else 0.0
+    val_mwayen_etid = (val_total_etid_biblik / val_mwayen_pwoklamate_patisipe) if val_mwayen_pwoklamate_patisipe > 0 else 0.0
+
+    val_kantite_pwoklamate_lengwistik = 0 # Assuming 0 for now, logic can be added if data is available
+    val_tous_les_proclamateurs_actifs = val_kantite_pwoklamate_header # This line now excludes SPs
+    val_pyonye_espesyal_count = special_pioneer_reporters_count # This is the count of SPs who reported
+                                                              # but per instructions, the line in report should show 0.
+                                                              # So, we'll use a hardcoded 0 for display on that line.
+
     avg_weekend_attendance = cong_data.monthly_attendance_weekend_avg.get((target_year, target_month), 0)
 
-    # Outputting the Report (New Format)
-    click.echo(click.style("Rezime Rapò Aktivite Mansyèl", bold=True))
-    click.echo(f"Pou Mwa: {target_month_str}")
-    click.echo(f"Rapò kreye: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    click.echo("-----------------------------")
+    # Outputting the Report (Haitian Creole Format)
+    # Note: The subtask implies the line "Pyonye espesyal" should display 0.
+    # The "Kantite pwoklamatè" and "Tous les proclamateurs actifs" lines should exclude SPs.
 
-    click.echo("Tous les proclamateurs actifs")
-    click.echo(total_active_publishers_count)
+    click.echo(f"RAPÒ AKTIVITE PREDIKASYON ASANBLE POU {target_month_str.split('-')[1].upper()} {target_year}") # Simplified month name for now
+    click.echo(f"\nRapò kreye: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}") # Added by convention, can be removed if not in expected output
 
-    click.echo("Assistance moyenne à la réunion de week-end")
-    click.echo(avg_weekend_attendance if avg_weekend_attendance else "N/A")
-
-    # Proclamateurs (Publishers)
-    click.echo("\nProclamateurs")
-    click.echo("Nombre de fiches d’activité (S-4)")
-    click.echo(summary_data['publishers'].get('count', 0))
-    click.echo("Cours bibliques")
-    click.echo(summary_data['publishers'].get('studies', 0))
-
-    # Pionniers auxiliaires
-    click.echo("\nPionniers auxiliaires")
-    click.echo("Nombre de fiches d’activité (S-4)")
-    click.echo(summary_data['aux_pioneers'].get('count', 0))
-    click.echo("Heures")
-    click.echo(summary_data['aux_pioneers'].get('hours_display', 0))
-    click.echo("Cours bibliques")
-    click.echo(summary_data['aux_pioneers'].get('studies', 0))
-
-    # Pionniers permanents
-    click.echo("\nPionniers permanents")
-    click.echo("Nombre de fiches d’activité (S-4)")
-    click.echo(summary_data['reg_pioneers'].get('count', 0))
-    click.echo("Heures")
-    click.echo(summary_data['reg_pioneers'].get('hours_display', 0))
-    click.echo("Cours bibliques")
-    click.echo(summary_data['reg_pioneers'].get('studies', 0))
-    
-    click.echo("\n-----------------------------")
-    # Check if any report data exists or attendance exists before printing no data note
-    no_report_data = total_active_publishers_count == 0
-    no_attendance_data = not avg_weekend_attendance # Assuming 0 or "N/A" means no data for this context
-
-    # More precise check: if all specific counts are zero and attendance is zero/NA
-    all_counts_zero = all(summary_data[cat_key].get('count', 0) == 0 for cat_key in summary_data)
+    click.echo(f"\nKantite pwoklamatè................................. {val_kantite_pwoklamate_header}")
+    click.echo(f"Pyonye pèmanan.................................... {val_pyonye_permanan_count}")
+    click.echo(f"Pyonye oksilyè.................................... {val_pyonye_oksilye_count}")
+    click.echo(f"Pwoklamatè........................................ {val_pwoklamate_count}")
+    click.echo(f"Total èdtan....................................... {val_total_edtans:.2f}")
+    click.echo(f"Total etid biblik................................. {val_total_etid_biblik}")
+    click.echo(f"Mwayèn pwoklamatè ki patisipe nan ministè a chak mwa.... {val_mwayen_pwoklamate_patisipe}")
+    click.echo(f"Mwayèn èdtan chak pwoklamatè fè................... {val_mwayen_edtan:.2f}")
+    click.echo(f"Mwayèn etid biblik chak pwoklamatè fè............. {val_mwayen_etid:.2f}")
+    click.echo(f"Kantite pwoklamatè ki lengwistik.................. {val_kantite_pwoklamate_lengwistik}")
+    click.echo(f"Tous les proclamateurs actifs..................... {val_tous_les_proclamateurs_actifs}") # Excludes SP
+    click.echo(f"Pyonye espesyal................................... 0") # Hardcoded to 0 as per instruction
+    click.echo(f"Assistance moyenne à la réunion de week-end....... {avg_weekend_attendance if avg_weekend_attendance else 0}")
 
 
-    if all_counts_zero and no_attendance_data : # If no publishers reported and no attendance data
-        click.echo(f"\nNote: Pa gen rapò ki disponib pou mwa {target_month_str}.")
+    # Fallback "no data" note if no non-SP publishers reported
+    if val_kantite_pwoklamate_header == 0 and special_pioneer_reporters_count == 0:
+         click.echo(f"\nNote: Pa gen rapò ki disponib pou mwa {target_month_str}.")
