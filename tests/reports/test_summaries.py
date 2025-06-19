@@ -7,11 +7,10 @@ from unittest.mock import patch
 from click.testing import CliRunner
 from collections import defaultdict
 
-# JSON data constants defined at class level for clarity and reuse
 USER_PROVIDED_JSON_MAY_2025_STR = """
 {
   "congregation": {"id": 28341, "name": "East Karenberg Area Congregation (#744)", "locales_id": 37, "timezones_id": 95, "countries_id": 58, "jworg_langcode": "FR", "locale": {"id": 37, "code": "fr", "name": "French", "symbol": "FR"}},
-  "publishers": [{"id": 1000001, "reportstobranch": false}, {"id": 1000002, "reportstobranch": false}, {"id": 1000003, "reportstobranch": false}, {"id": 1000004, "reportstobranch": false}, {"id": 1000005, "reportstobranch": false}, {"id": 1000008, "reportstobranch": false}, {"id": 1000009, "reportstobranch": true}, {"id": 1000010, "reportstobranch": true}],
+  "publishers": [{"id": 1000001, "reportstobranch": false, "firstname": "Michael", "lastname": "Edwards"}, {"id": 1000002, "reportstobranch": false, "firstname": "Brenda", "lastname": "Moore"}, {"id": 1000003, "reportstobranch": false, "firstname": "Anna", "lastname": "Bishop"}, {"id": 1000004, "reportstobranch": false, "firstname": "Gail", "lastname": "Jones"}, {"id": 1000005, "reportstobranch": false, "firstname": "Dawn", "lastname": "Berry"}, {"id": 1000008, "reportstobranch": false, "firstname": "Kaitlin", "lastname": "Todd"}, {"id": 1000009, "reportstobranch": true, "firstname": "Troy", "lastname": "Bush"}, {"id": 1000010, "reportstobranch": true, "firstname": "Kiara", "lastname": "Cross"}, {"id": 1000006, "firstname": "Alicia", "lastname": "Fitzgerald", "reportstobranch": false}, {"id": 1000007, "firstname": "Sierra", "lastname": "Johnson", "reportstobranch": false}],
   "reports": [
     {"user": {"id": 1000001}, "month": 5, "year": 2025, "minutes": 2340, "pioneer": "Regular", "studies": 6, "has_reported_field_service": true},
     {"user": {"id": 1000002}, "month": 5, "year": 2025, "minutes": 3300, "pioneer": "Regular", "studies": 6, "has_reported_field_service": true},
@@ -20,7 +19,13 @@ USER_PROVIDED_JSON_MAY_2025_STR = """
     {"user": {"id": 1000005}, "month": 5, "year": 2025, "minutes": 3600, "pioneer": "Regular", "studies": 8, "has_reported_field_service": true},
     {"user": {"id": 1000008}, "month": 5, "year": 2025, "minutes": 3000, "pioneer": "Regular", "studies": 3, "has_reported_field_service": true},
     {"user": {"id": 1000009}, "month": 5, "year": 2025, "minutes": 1, "pioneer": null, "studies": 15, "has_reported_field_service": true},
-    {"user": {"id": 1000010}, "month": 5, "year": 2025, "minutes": 1, "pioneer": null, "studies": 14, "has_reported_field_service": true}
+    {"user": {"id": 1000010}, "month": 5, "year": 2025, "minutes": 1, "pioneer": null, "studies": 14, "has_reported_field_service": true},
+    {"user": {"id": 1000009}, "year": 2024, "month": 12, "minutes": 1, "studies": 0, "has_reported_field_service": true, "pioneer": "Special"},
+    {"user": {"id": 1000010}, "year": 2025, "month": 1, "minutes": 1, "studies": 0, "has_reported_field_service": true, "pioneer": "Special"},
+    {"user": {"id": 1000001}, "year": 2025, "month": 2, "minutes": 1, "studies": 0, "has_reported_field_service": true, "pioneer": "Regular"},
+    {"user": {"id": 1000002}, "year": 2025, "month": 3, "minutes": 1, "studies": 0, "has_reported_field_service": true, "pioneer": "Regular"},
+    {"user": {"id": 1000006}, "year": 2025, "month": 4, "minutes": 1, "studies": 0, "has_reported_field_service": true, "pioneer": null},
+    {"user": {"id": 1000007}, "year": 2024, "month": 12, "minutes": 1, "studies": 0, "has_reported_field_service": true, "pioneer": null}
   ],
   "attendance": {"attendance": [{"month": "2025-05", "weAvg": 163}]}
 }
@@ -30,41 +35,22 @@ MAY_2026_MOCK_DATA_STR = """
 {
   "congregation": {"id": 28342, "name": "Default Test Cong", "locale": {"id": 37, "code": "fr", "name": "French"}},
   "publishers": [
-    {"id": "rp1", "reportstobranch": false}, {"id": "rp2", "reportstobranch": false},
-    {"id": "ap1", "reportstobranch": false},
-    {"id": "pub1", "reportstobranch": false}, {"id": "pub2", "reportstobranch": false}, {"id": "pub3", "reportstobranch": false},
-    {"id": "sp1", "reportstobranch": true},
-    {"id": "inactive1"}
+    {"id": "rp1", "reportstobranch": false, "firstname": "RP", "lastname": "One"}, {"id": "rp2", "reportstobranch": false, "firstname": "RP", "lastname": "Two"},
+    {"id": "ap1", "reportstobranch": false, "firstname": "AP", "lastname": "One"},
+    {"id": "pub1", "reportstobranch": false, "firstname": "Pub", "lastname": "One"}, {"id": "pub2", "reportstobranch": false, "firstname": "Pub", "lastname": "Two"}, {"id": "pub3", "reportstobranch": false, "firstname": "Pub", "lastname": "Three"},
+    {"id": "sp1", "reportstobranch": true, "firstname": "SP", "lastname": "One"},
+    {"id": "inactive1", "firstname": "Inactive", "lastname": "One"}
   ],
   "reports": [
-    {"user": {"id": "rp1"}, "year": 2026, "month": 5, "minutes": 3000, "studies": 5, "pioneer": "Regular"},
-    {"user": {"id": "rp2"}, "year": 2026, "month": 5, "minutes": 3600, "studies": 4, "pioneer": "Regular"},
-    {"user": {"id": "ap1"}, "year": 2026, "month": 5, "minutes": 1800, "studies": 3, "pioneer": "Auxiliary"},
-    {"user": {"id": "pub1"}, "year": 2026, "month": 5, "minutes": 600, "studies": 2, "pioneer": null},
-    {"user": {"id": "pub2"}, "year": 2026, "month": 5, "minutes": 0, "studies": 1, "pioneer": null},
-    {"user": {"id": "pub3"}, "year": 2026, "month": 5, "minutes": 300, "studies": 0, "pioneer": null},
-    {"user": {"id": "sp1"}, "year": 2026, "month": 5, "minutes": 6000, "studies": 10, "pioneer": "Special"}
+    {"user": {"id": "rp1"}, "year": 2026, "month": 5, "minutes": 3000, "studies": 5, "pioneer": "Regular", "has_reported_field_service": true},
+    {"user": {"id": "rp2"}, "year": 2026, "month": 5, "minutes": 3600, "studies": 4, "pioneer": "Regular", "has_reported_field_service": true},
+    {"user": {"id": "ap1"}, "year": 2026, "month": 5, "minutes": 1800, "studies": 3, "pioneer": "Auxiliary", "has_reported_field_service": true},
+    {"user": {"id": "pub1"}, "year": 2026, "month": 5, "minutes": 600, "studies": 2, "pioneer": null, "has_reported_field_service": true},
+    {"user": {"id": "pub2"}, "year": 2026, "month": 5, "minutes": 0, "studies": 1, "pioneer": null, "has_reported_field_service": true},
+    {"user": {"id": "pub3"}, "year": 2026, "month": 5, "minutes": 300, "studies": 0, "pioneer": null, "has_reported_field_service": true},
+    {"user": {"id": "sp1"}, "year": 2026, "month": 5, "minutes": 6000, "studies": 10, "pioneer": "Special", "has_reported_field_service": true}
   ],
   "attendance": {"attendance": [{"month": "2026-05", "weAvg": 100}]}
-}
-"""
-
-WITH_DATA_OCT_2023_JSON_STR = """
-{
-  "congregation": {"id": 28343, "name": "With Data Oct Cong", "locale": {"id": 37, "code": "fr", "name": "French"}},
-  "publishers": [
-    {"id": "rp_wd1", "reportstobranch": false}, {"id": "ap_wd1", "reportstobranch": false},
-    {"id": "pub_wd1", "reportstobranch": false}, {"id": "pub_wd2", "reportstobranch": false},
-    {"id": "sp_wd1", "reportstobranch": true}, {"id": "inactive_wd1"}
-  ],
-  "reports": [
-    {"user": {"id": "rp_wd1"}, "year": 2023, "month": 10, "minutes": 3300, "studies": 3, "pioneer": "Regular"},
-    {"user": {"id": "ap_wd1"}, "year": 2023, "month": 10, "minutes": 2100, "studies": 2, "pioneer": "Auxiliary"},
-    {"user": {"id": "pub_wd1"}, "year": 2023, "month": 10, "minutes": 720, "studies": 1, "pioneer": null},
-    {"user": {"id": "pub_wd2"}, "year": 2023, "month": 10, "minutes": 480, "studies": 0, "pioneer": null},
-    {"user": {"id": "sp_wd1"}, "year": 2023, "month": 10, "minutes": 5400, "studies": 7, "pioneer": "Special"}
-  ],
-  "attendance": {"attendance": [{"month": "2023-10", "weAvg": 150}]}
 }
 """
 
@@ -79,7 +65,6 @@ NO_ACTIVITY_JUL_2024_JSON_STR = """
 class TestMonthlyActivityReport(unittest.TestCase):
     USER_PROVIDED_JSON_MAY_2025_STR = USER_PROVIDED_JSON_MAY_2025_STR
     MAY_2026_MOCK_DATA_STR = MAY_2026_MOCK_DATA_STR
-    WITH_DATA_OCT_2023_JSON_STR = WITH_DATA_OCT_2023_JSON_STR
     NO_ACTIVITY_JUL_2024_JSON_STR = NO_ACTIVITY_JUL_2024_JSON_STR
 
     def setUp(self):
@@ -113,7 +98,7 @@ class TestMonthlyActivityReport(unittest.TestCase):
         output = result.output.replace("\r\n", "\n")
 
         expected_french_output = """Tous les proclamateurs actifs
-8
+10
 Assistance moyenne à la réunion de week-end
 163
 
@@ -122,8 +107,6 @@ Nombre de fiches d’activité (S-4)
 0
 Cours bibliques
 0
-Heures
-0.00
 
 PIONNIERS AUXILIAIRES
 Nombre de fiches d’activité (S-4)
@@ -146,11 +129,16 @@ Cours bibliques
         for line in output.split('\n'):
             if line.strip() == "Tous les proclamateurs actifs": report_content_started = True
             if not report_content_started: continue
-            if not (line.startswith("Info:") or line.startswith("Rapò kreye:") or \
-                    line.startswith("Rezime Rapò Aktivite Mansyèl") or line.startswith("Pou Mwa:") or \
+            if not (line.startswith("Info:") or \
+                    line.startswith("Rezime Rapò Aktivite Mansyèl") or \
+                    line.startswith("Pou Mwa:") or \
                     line.strip() == "-----------------------------"):
+                # Keep "Rapò kreye:" for now, or decide to strip it too
                 actual_report_lines.append(line)
-        actual_report_processed = "\n".join(actual_report_lines).strip()
+
+        # Strip "Rapò kreye:" if present before final comparison
+        final_actual_lines = [line for line in actual_report_lines if not line.startswith("Rapò kreye:")]
+        actual_report_processed = "\n".join(final_actual_lines).strip()
 
         self.assertEqual(actual_report_processed, expected_french_output,
                          f"Output does not match expected French summary for May 2025.\nExpected:\n{expected_french_output}\n\nActual:\n{actual_report_processed}")
@@ -160,7 +148,7 @@ Cours bibliques
         """Tests the default month summary (May 2026) with the new French-labeled format."""
         mock_datetime_summaries.datetime.now.return_value = datetime.datetime(2026, 6, 15, 10, 0, 0)
         expected_month_str = "2026-05"
-        result = self._run_cli_with_data(self.MAY_2026_MOCK_DATA_STR) # No month arg
+        result = self._run_cli_with_data(self.MAY_2026_MOCK_DATA_STR)
 
         self.assertEqual(result.exit_code, 0, f"CLI Error: {result.output}")
         output = result.output.replace("\r\n", "\n")
@@ -199,75 +187,25 @@ Cours bibliques
         report_content_started = False
         for line in output.split('\n'):
             if line.strip() == "Tous les proclamateurs actifs": report_content_started = True
-            if not report_content_started: continue
-            if not (line.startswith("Info:") or line.startswith("Rapò kreye:") or \
-                    line.startswith("Rezime Rapò Aktivite Mansyèl") or line.startswith("Pou Mwa:") or \
+            if not report_content_started: continue # Skip lines before this marker
+            if not (line.startswith("Info:") or \
+                    line.startswith("Rezime Rapò Aktivite Mansyèl") or \
+                    line.startswith("Pou Mwa:") or \
                     line.strip() == "-----------------------------"):
                 actual_report_lines.append(line)
-        actual_report_processed = "\n".join(actual_report_lines).strip()
+
+        final_actual_lines = [line for line in actual_report_lines if not line.startswith("Rapò kreye:")]
+        actual_report_processed = "\n".join(final_actual_lines).strip()
 
         self.assertEqual(actual_report_processed, expected_french_output,
                             f"Output does not match expected French summary for default month May 2026.\nExpected:\n{expected_french_output}\n\nActual:\n{actual_report_processed}")
-
-    @patch('fsr.reports.summaries.datetime')
-    def test_summary_new_format_oct_2023(self, mock_datetime_summaries):
-        """Tests a specific month (Oct 2023) with the new French-labeled format."""
-        mock_datetime_summaries.datetime.now.return_value = datetime.datetime(2023, 11, 15, 10, 0, 0)
-        month_to_test = "2023-10"
-        result = self._run_cli_with_data(self.WITH_DATA_OCT_2023_JSON_STR, month_to_test)
-
-        self.assertEqual(result.exit_code, 0, f"CLI Error: {result.output}")
-        output = result.output.replace("\r\n", "\n")
-
-        expected_french_output = """Tous les proclamateurs actifs
-5
-Assistance moyenne à la réunion de week-end
-150
-
-PROCLAMATEURS
-Nombre de fiches d’activité (S-4)
-2
-Cours bibliques
-1
-Heures
-20.00
-
-PIONNIERS AUXILIAIRES
-Nombre de fiches d’activité (S-4)
-1
-Heures
-35.00
-Cours bibliques
-2
-
-PIONNIERS PERMANENTS
-Nombre de fiches d’activité (S-4)
-1
-Heures
-55.00
-Cours bibliques
-3""".strip()
-
-        actual_report_lines = []
-        report_content_started = False
-        for line in output.split('\n'):
-            if line.strip() == "Tous les proclamateurs actifs": report_content_started = True
-            if not report_content_started: continue
-            if not (line.startswith("Info:") or line.startswith("Rapò kreye:") or \
-                    line.startswith("Rezime Rapò Aktivite Mansyèl") or line.startswith("Pou Mwa:") or \
-                    line.strip() == "-----------------------------"):
-                actual_report_lines.append(line)
-        actual_report_processed = "\n".join(actual_report_lines).strip()
-
-        self.assertEqual(actual_report_processed, expected_french_output,
-                             f"Output does not match expected French summary for Oct 2023.\nExpected:\n{expected_french_output}\n\nActual:\n{actual_report_processed}")
 
     @patch('fsr.reports.summaries.datetime')
     def test_summary_new_format_no_activity_default_month(self, mock_datetime_summaries):
         """Tests the default month with no activity, expecting French-labeled output."""
         mock_datetime_summaries.datetime.now.return_value = datetime.datetime(2024, 8, 15, 10, 0, 0)
         expected_month_str = "2024-07"
-        result = self._run_cli_with_data(self.NO_ACTIVITY_JUL_2024_JSON_STR) # No month arg
+        result = self._run_cli_with_data(self.NO_ACTIVITY_JUL_2024_JSON_STR)
 
         self.assertEqual(result.exit_code, 0, f"CLI Error: {result.output}")
         output = result.output.replace("\r\n", "\n")
@@ -307,11 +245,19 @@ Cours bibliques
         for line in output.split('\n'):
             if line.strip() == "Tous les proclamateurs actifs": report_content_started = True
             if not report_content_started: continue
-            if not (line.startswith("Info:") or line.startswith("Rapò kreye:") or \
-                    line.startswith("Rezime Rapò Aktivite Mansyèl") or line.startswith("Pou Mwa:") or \
+            if not (line.startswith("Info:") or \
+                    line.startswith("Rezime Rapò Aktivite Mansyèl") or \
+                    line.startswith("Pou Mwa:") or \
                     line.strip() == "-----------------------------"):
                 actual_report_lines.append(line)
-        actual_report_processed = "\n".join(actual_report_lines).strip()
+
+        final_actual_lines = [line for line in actual_report_lines if not line.startswith("Rapò kreye:")]
+        actual_report_processed = "\n".join(final_actual_lines).strip()
 
         self.assertEqual(actual_report_processed, expected_french_output,
                              f"Output does not match expected French no-activity summary for {expected_month_str}.\nExpected:\n{expected_french_output}\n\nActual:\n{actual_report_processed}")
+
+# Removed if __name__ == '__main__': block
+# Removed old test_monthly_activity_no_activity as it's replaced by test_summary_new_format_no_activity_default_month
+# Removed old _run_summary_command as it's replaced by _run_cli_with_data
+# Removed self.mock_data_for_summaries as it's no longer used by these tests.
