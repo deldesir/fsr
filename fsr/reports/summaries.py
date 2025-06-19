@@ -33,7 +33,7 @@ def monthly_activity_report(ctx: click.Context, target_month_str: str):
         first_day_of_current_month = now.replace(day=1)
         last_day_of_previous_month = first_day_of_current_month - datetime.timedelta(days=1)
         target_month_str = last_day_of_previous_month.strftime('%Y-%m')
-        click.echo(f"Info: --month not provided, defaulting to previous month ({target_month_str}).", fg="blue")
+        click.echo(f"Info: --month not provided, defaulting to previous month ({target_month_str}).")
 
     try:
         target_year, target_month = parse_year_month(target_month_str)

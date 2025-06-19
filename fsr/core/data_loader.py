@@ -22,6 +22,7 @@ class CongregationData:
         self.publishers_by_id: dict = {}
         self.publishers_by_name: dict = {}
         self.reports_by_publisher_month_year: dict = {}
+        self.monthly_attendance_weekend_avg: dict = {}
 
 
 def load_and_prepare_data(json_file_path: str) -> CongregationData | None:
@@ -99,5 +100,52 @@ def load_and_prepare_data(json_file_path: str) -> CongregationData | None:
             print(f"Warning: Report entry has unexpected structure for 'user': {report}. Skipping this report for lookup.")
             continue
 
+    # Process meeting attendance data
+    # Assuming structure like: {"attendance": {"attendance": [{"month": "YYYY-MM", "weAvg": X}, ...]}}
+    # or simply {"attendance": [{"month": "YYYY-MM", "weAvg": X}, ...]} if the outer dict is the list itself.
+    # The prompt was raw_data.get('attendance', {}), then monthly_records = attendance_data.get('attendance', [])
+    # This implies the nested structure.
+
+    attendance_top_level = raw_data.get('attendance', {})
+    if isinstance(attendance_top_level, dict):
+        monthly_records = attendance_top_level.get('attendance', [])
+    elif isinstance(attendance_top_level, list): # Handles if 'attendance' key points directly to a list
+        monthly_records = attendance_top_level
+    else:
+        monthly_records = []
+
+    if not monthly_records and attendance_top_level: # Data exists at 'attendance' but not in expected list format or empty list
+        print("Warning: 'attendance' data found but is not a list of records or is empty. Meeting attendance will not be available.")
+    elif not attendance_top_level: # 'attendance' key itself is missing
+        print("Warning: 'attendance' key not found in JSON. Meeting attendance will not be available.")
+
+    for item in monthly_records:
+        if not isinstance(item, dict):
+            print(f"Warning: Skipping invalid attendance item (not a dictionary): {item}")
+            continue
+
+        month_str = item.get('month')
+        we_avg_raw = item.get('weAvg')
+
+        if not month_str or we_avg_raw is None: # Check if essential keys are missing
+            print(f"Warning: Skipping attendance item with missing 'month' or 'weAvg': {item}")
+            continue
+
+        try:
+            year = int(month_str.split('-')[0])
+            month_num = int(month_str.split('-')[1])
+
+            we_avg = 0
+            try:
+                we_avg = int(we_avg_raw) # Or float if decimal averages are possible
+            except (ValueError, TypeError):
+                print(f"Warning: Could not parse 'weAvg' value '{we_avg_raw}' for month {month_str}. Defaulting to 0.")
+                # we_avg remains 0
+
+            cong_data.monthly_attendance_weekend_avg[(year, month_num)] = we_avg
+        except ValueError:
+            print(f"Warning: Could not parse year/month from attendance item: {item}. Skipping.")
+        except Exception as e: # Catch-all for other unexpected errors with an item
+            print(f"Warning: An unexpected error occurred processing attendance item {item}: {e}. Skipping.")
 
     return cong_data
