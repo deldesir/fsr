@@ -22,7 +22,6 @@ class CongregationData:
         self.publishers_by_id: dict = {}
         self.publishers_by_name: dict = {}
         self.reports_by_publisher_month_year: dict = {}
-        self.monthly_attendance_weekend_avg: dict = {}
 
 
 def load_and_prepare_data(json_file_path: str) -> CongregationData | None:
@@ -100,34 +99,5 @@ def load_and_prepare_data(json_file_path: str) -> CongregationData | None:
             print(f"Warning: Report entry has unexpected structure for 'user': {report}. Skipping this report for lookup.")
             continue
 
-    # Process meeting attendance data
-    attendance_data = raw_data.get('attendance')
-    if isinstance(attendance_data, list):
-        for att_entry in attendance_data:
-            if not isinstance(att_entry, dict) or 'month' not in att_entry or 'weAvg' not in att_entry:
-                print(f"Warning: Skipping invalid attendance entry: {att_entry}")
-                continue
-            try:
-                year_str, month_str = att_entry['month'].split('-')
-                year = int(year_str)
-                month_num = int(month_str)
-                # Ensure weAvg is a number, default to 0 if not convertible
-                we_avg = att_entry['weAvg']
-                if not isinstance(we_avg, (int, float)):
-                    try:
-                        we_avg = float(we_avg) # Try to convert if it's a string representation of a number
-                    except (ValueError, TypeError):
-                        print(f"Warning: Invalid 'weAvg' value in attendance entry {att_entry}, defaulting to 0.")
-                        we_avg = 0
-
-                cong_data.monthly_attendance_weekend_avg[(year, month_num)] = we_avg
-            except ValueError:
-                print(f"Warning: Could not parse year/month from attendance entry: {att_entry}. Skipping.")
-            except Exception as e: # Catch any other unexpected errors during processing an entry
-                print(f"Warning: An unexpected error occurred while processing attendance entry {att_entry}: {e}. Skipping.")
-    elif attendance_data is not None: # It exists but is not a list
-        print("Warning: 'attendance' data found but is not in the expected list format. Meeting attendance will not be available.")
-    else: # attendance_data is None (key not found)
-        print("Warning: 'attendance' data not found in JSON. Meeting attendance will not be available.")
 
     return cong_data
