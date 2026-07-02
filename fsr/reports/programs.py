@@ -65,7 +65,7 @@ def _monday(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
-def _write_csv(path: str, fieldnames, rows) -> None:
+def _write_csv(path: str, fieldnames, rows, summary: str = '') -> None:
     tmp = path + '.tmp'
     # utf-8-sig: NWS's own exports carry a BOM.
     with open(tmp, 'w', newline='', encoding='utf-8-sig') as f:
@@ -73,7 +73,9 @@ def _write_csv(path: str, fieldnames, rows) -> None:
         writer.writeheader()
         writer.writerows(rows)
     os.replace(tmp, path)
-    click.echo(click.style(f"CSV file '{path}' created successfully.", fg="green"))
+    detail = f" ({summary})" if summary else ''
+    click.echo(click.style(
+        f"CSV file '{path}' created successfully{detail}.", fg="green"))
 
 
 def _default_out(stem: str) -> str:
@@ -143,9 +145,11 @@ def export_midweek_program(docx_path: Optional[str], csv_filepath: Optional[str]
     if not rows:
         raise click.ClickException('No midweek meetings found in the document.')
 
+    weeks = len({r['Date'] for r in rows})
     _write_csv(csv_filepath or _default_out('LNTNF_Pwogram'),
                ['Date', 'Person', 'PartType', 'Assignment', 'School',
-                'LanguageGroupID'], rows)
+                'LanguageGroupID'], rows,
+               summary=f"{len(rows)} assignments across {weeks} week(s)")
 
 
 @click.command('public-talks')
@@ -195,7 +199,16 @@ def export_public_talks(docx_path: Optional[str], csv_filepath: Optional[str],
     if not rows:
         raise click.ClickException('No public talks found in the document.')
 
-    _write_csv(csv_filepath or _default_out('Diskou_Piblik'), fieldnames, rows)
+    unresolved = [r for r in rows if not r['OutlineNumber']]
+    if unresolved:
+        click.echo(click.style(
+            f"Warning: {len(unresolved)} talk title(s) not matched to an "
+            f"S-34 outline number (exported with number 0):", fg='yellow'))
+        for r in unresolved:
+            click.echo(click.style(f"  • {r['Date']}  {r['OutlineName']}",
+                                   fg='yellow'))
+    _write_csv(csv_filepath or _default_out('Diskou_Piblik'), fieldnames, rows,
+               summary=f"{len(rows)} talk(s)")
 
 
 @click.command('organized')
@@ -276,3 +289,84 @@ def export_organized(ctx: click.Context, docx_path: Optional[str],
     click.echo(click.style(
         f"Unified JSON '{out_path}' created ({len(weekend)} weekend talk(s), "
         f"{len(midweek)} midweek meeting(s)).", fg="green"))
+
+
+@click.command('all')
+@click.option('--out-dir', type=click.Path(file_okay=False), default='.',
+              show_default=True, help='Directory to write every artifact into.')
+@click.option('--docx', 'docx_path', type=click.Path(exists=True, dir_okay=False),
+              default=None,
+              help="Hourglass 'Tout pwogram ansanm' .docx (auto-detected if omitted).")
+@click.option('--s34-db', default=DEFAULT_S34_DB, show_default=True,
+              help='jwlinker corpus DB for resolving outline numbers from titles.')
+@click.option('--s34-language', default='51', show_default=True,
+              help='MEPS language id for outline matching (51 = Haitian Creole).')
+@click.pass_context
+def export_all(ctx: click.Context, out_dir: str, docx_path: Optional[str],
+               s34_db: str, s34_language: str):
+    """Export everything possible in one run.
+
+    Produces every artifact the available inputs allow — the NWS
+    field-service CSV (needs the Hourglass JSON), the NWS midweek and
+    public-talk program CSVs (need the docx), and the unified Organized JSON
+    (needs both) — and reports what was skipped and why. `fsr doctor` shows
+    the same availability without writing anything.
+    """
+    from fsr.reports.exports import export_csv_command
+
+    os.makedirs(out_dir, exist_ok=True)
+    stamp = f"{datetime.now():%Y%m%d}"
+    have_json = bool(ctx.obj and ctx.obj.get('cong_data'))
+    try:
+        docx_found = _resolve_docx(docx_path)
+    except click.ClickException:
+        docx_found = None
+
+    made, skipped = [], []
+
+    def run(label, command, **kwargs):
+        try:
+            ctx.invoke(command, **kwargs)
+            made.append(label)
+        except click.ClickException as e:
+            skipped.append((label, str(e.message)))
+
+    if have_json:
+        run('field-service', export_csv_command,
+            csv_filepath=os.path.join(
+                out_dir, f"NWScheduler_field_service_{stamp}.csv"))
+    else:
+        skipped.append(('field-service', 'no Hourglass JSON found'))
+
+    if docx_found:
+        run('midweek-program', export_midweek_program,
+            docx_path=docx_found,
+            csv_filepath=os.path.join(
+                out_dir, f"NWScheduler_LNTNF_Pwogram_{stamp}.csv"))
+        run('public-talks', export_public_talks,
+            docx_path=docx_found,
+            csv_filepath=os.path.join(
+                out_dir, f"NWScheduler_Diskou_Piblik_{stamp}.csv"),
+            s34_db=s34_db, s34_language=s34_language)
+    else:
+        skipped.append(('midweek-program', 'no program .docx found'))
+        skipped.append(('public-talks', 'no program .docx found'))
+
+    if have_json and docx_found:
+        run('organized (unified JSON)', export_organized,
+            docx_path=docx_found,
+            out_path=os.path.join(out_dir, f"organized-unified_{stamp}.json"),
+            s34_db=s34_db, s34_language=s34_language)
+    else:
+        skipped.append(('organized (unified JSON)',
+                        'needs BOTH the Hourglass JSON and the program .docx'))
+
+    click.echo('')
+    click.echo(click.style(
+        f"Done: {len(made)} artifact(s) in {os.path.abspath(out_dir)}",
+        fg='green', bold=True))
+    for label, reason in skipped:
+        click.echo(click.style(f"  skipped {label}: {reason}", fg='yellow'))
+    if skipped:
+        click.echo(click.style(
+            "  ↳ run `fsr doctor` to see what is missing.", fg='yellow'))

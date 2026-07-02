@@ -202,3 +202,62 @@ class TestUnifiedOrganizedExport(unittest.TestCase):
         parts = program['midweek'][0]['parts']
         self.assertTrue(any(p['part_type'] == 'Chairman' for p in parts))
         self.assertTrue(any(p['part_type'] == 'CBSReader' for p in parts))
+
+
+class TestCliUx(unittest.TestCase):
+    def setUp(self):
+        self.runner = CliRunner()
+
+    def test_version_flag(self):
+        result = self.runner.invoke(fsr_cli, ['--version'])
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('fsr, version', result.output)
+
+    def test_alias_resolves_to_canonical(self):
+        # `x pt` == `export public-talks`; canonical name shows in usage.
+        result = self.runner.invoke(fsr_cli, ['x', 'pt', '--help'])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn('public-talks', result.output)
+
+    def test_unambiguous_prefix(self):
+        result = self.runner.invoke(fsr_cli, ['export', 'mid', '--help'])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn('midweek-program', result.output)
+
+    def test_help_lists_aliases(self):
+        result = self.runner.invoke(fsr_cli, ['export', '--help'])
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn('Aliases', result.output)
+
+    def test_doctor_runs(self):
+        with self.runner.isolated_filesystem():
+            result = self.runner.invoke(fsr_cli, ['doctor'])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn('Exports possible right now', result.output)
+
+    def test_export_all_with_both_inputs(self):
+        import json
+        with TemporaryDirectory() as tmpdir:
+            docx = Path(tmpdir) / 'Tout pwogram test.docx'
+            _write_docx(docx, _sample_rows())
+            src = Path(tmpdir) / 'hourglass-export.json'
+            src.write_text(json.dumps({
+                'congregation': {}, 'publishers': [], 'reports': []}))
+            result = self.runner.invoke(fsr_cli, [
+                '--json-file', str(src), 'export', 'all',
+                '--out-dir', tmpdir, '--docx', str(docx)])
+            self.assertEqual(result.exit_code, 0, result.output)
+            names = {p.name for p in Path(tmpdir).iterdir()}
+        self.assertTrue(any(n.startswith('NWScheduler_LNTNF') for n in names))
+        self.assertTrue(any(n.startswith('NWScheduler_Diskou') for n in names))
+        self.assertTrue(any(n.startswith('organized-unified') for n in names))
+
+    def test_export_all_reports_skips(self):
+        with self.runner.isolated_filesystem() as tmpdir:
+            docx = Path(tmpdir) / 'Tout pwogram test.docx'
+            _write_docx(docx, _sample_rows())
+            result = self.runner.invoke(fsr_cli, [
+                'export', 'all', '--docx', str(docx)])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn('skipped field-service', result.output)
+        self.assertIn('skipped organized', result.output)
