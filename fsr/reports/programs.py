@@ -196,3 +196,83 @@ def export_public_talks(docx_path: Optional[str], csv_filepath: Optional[str],
         raise click.ClickException('No public talks found in the document.')
 
     _write_csv(csv_filepath or _default_out('Diskou_Piblik'), fieldnames, rows)
+
+
+@click.command('organized')
+@click.option('--docx', 'docx_path', type=click.Path(exists=True, dir_okay=False),
+              default=None,
+              help="Hourglass 'Tout pwogram ansanm' .docx (auto-detected if omitted).")
+@click.option('--out', 'out_path', type=click.Path(dir_okay=False), default=None,
+              help='Output JSON path (default: auto-generated).')
+@click.option('--s34-db', default=DEFAULT_S34_DB, show_default=True,
+              help='jwlinker corpus DB for resolving outline numbers from titles.')
+@click.option('--s34-language', default='51', show_default=True,
+              help='MEPS language id for outline matching (51 = Haitian Creole).')
+@click.pass_context
+def export_organized(ctx: click.Context, docx_path: Optional[str],
+                     out_path: Optional[str], s34_db: str, s34_language: str):
+    """Export ONE unified JSON for Organized: Hourglass data + the program.
+
+    Combines the latest Hourglass JSON export (publishers, privileges,
+    reports, attendance, groups — passed through verbatim) with the meeting
+    program parsed from the .docx (which the JSON does not contain) under a
+    single "program" key. Organized's import_hourglass command consumes this
+    file directly, so one file carries the complete congregation state.
+    """
+    import json as _json
+
+    json_file_path = ctx.obj.get('json_file_path') if ctx.obj else None
+    if not json_file_path:
+        raise click.ClickException(
+            'The unified export needs the Hourglass JSON — none was found. '
+            'Pass it with the top-level --json-file option.')
+    docx_path = _resolve_docx(docx_path)
+    meetings = _load_meetings(docx_path)
+    resolver = OutlineResolver(s34_db, s34_language)
+
+    with open(json_file_path, encoding='utf-8') as f:
+        unified = _json.load(f)
+
+    weekend, midweek = [], []
+    for meeting in meetings:
+        week_of = _monday(meeting['date']).strftime('%Y/%m/%d')
+        if meeting['date'].weekday() == 6:
+            talk = parse_weekend(meeting)
+            if not talk:
+                continue  # convention/assembly week
+            weekend.append({
+                'date': talk['date'].strftime('%Y/%m/%d'),
+                'week_of': week_of,
+                'title': talk['title'],
+                'outline_number': resolver.resolve(talk['title']),
+                'speaker': talk['speaker'],
+                'speaker_cong': talk['speaker_cong'],
+                'chairman': talk['chairman'],
+                'wt_reader': talk['wt_reader'],
+            })
+        else:
+            parts = parse_midweek(meeting)
+            if parts:
+                midweek.append({
+                    'date': meeting['date'].strftime('%Y/%m/%d'),
+                    'week_of': week_of,
+                    'parts': parts,
+                })
+
+    unified['program'] = {
+        'generated_at': datetime.now().isoformat(timespec='seconds'),
+        'source_docx': os.path.basename(docx_path),
+        'weekend': weekend,
+        'midweek': midweek,
+    }
+
+    if out_path is None:
+        out_path = os.path.join(
+            os.getcwd(), f"organized-unified_{datetime.now():%Y%m%d}.json")
+    tmp = out_path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        _json.dump(unified, f, ensure_ascii=False)
+    os.replace(tmp, out_path)
+    click.echo(click.style(
+        f"Unified JSON '{out_path}' created ({len(weekend)} weekend talk(s), "
+        f"{len(midweek)} midweek meeting(s)).", fg="green"))

@@ -171,3 +171,34 @@ class TestProgramExportCommands(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestUnifiedOrganizedExport(unittest.TestCase):
+    def test_unified_json(self):
+        import json
+        runner = CliRunner()
+        with TemporaryDirectory() as tmpdir:
+            docx = Path(tmpdir) / 'Tout pwogram test.docx'
+            _write_docx(docx, _sample_rows())
+            src = Path(tmpdir) / 'hourglass-export.json'
+            src.write_text(json.dumps({
+                'congregation': {}, 'publishers': [], 'reports': []}))
+            out = Path(tmpdir) / 'unified.json'
+            result = runner.invoke(fsr_cli, [
+                '--json-file', str(src), 'export', 'organized',
+                '--docx', str(docx), '--out', str(out)])
+            self.assertEqual(result.exit_code, 0, result.output)
+            unified = json.loads(out.read_text())
+
+        # Original Hourglass keys pass through verbatim.
+        self.assertIn('publishers', unified)
+        program = unified['program']
+        self.assertEqual(len(program['weekend']), 1)  # convention week skipped
+        talk = program['weekend'][0]
+        self.assertEqual(talk['date'], '2026/07/12')
+        self.assertEqual(talk['week_of'], '2026/07/06')
+        self.assertEqual(talk['speaker'], 'Sam Speaker')
+        self.assertEqual(len(program['midweek']), 1)
+        parts = program['midweek'][0]['parts']
+        self.assertTrue(any(p['part_type'] == 'Chairman' for p in parts))
+        self.assertTrue(any(p['part_type'] == 'CBSReader' for p in parts))
