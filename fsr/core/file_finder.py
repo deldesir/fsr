@@ -182,3 +182,36 @@ def find_csv_file() -> Optional[str]:
         extensions=["csv"],
         default_dirs=default_dirs
     )
+
+
+def find_docx_file() -> Optional[str]:
+    """
+    Finds the Hourglass "Tout pwogram ansanm" program document.
+
+    Searches for "Tout pwogram*.docx" in the current directory, the user's
+    Downloads folder, and /library/hourglass (the IIAB drop directory),
+    selecting the most recently modified match.
+
+    Returns:
+        The absolute path to the selected .docx file, or None if not found.
+    """
+    home_dir = Path.home()
+    download_dirs_names = ["Downloads", "downloads", "Téléchargements", "téléchargements"]
+
+    potential_dirs = [".", str(home_dir), "/library/hourglass"]
+    for name in download_dirs_names:
+        potential_dirs.append(str(home_dir / name))
+
+    candidates = []
+    for current_dir in potential_dirs:
+        p_dir = Path(current_dir)
+        if not p_dir.is_dir():
+            continue
+        candidates.extend(
+            f for f in p_dir.glob("Tout pwogram*.docx") if f.is_file()
+        )
+
+    if not candidates:
+        return None
+    latest = max(candidates, key=lambda f: f.stat().st_mtime)
+    return str(latest.resolve())

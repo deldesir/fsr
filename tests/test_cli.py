@@ -76,8 +76,12 @@ class TestCli(unittest.TestCase):
              patch.object(fsr_constants, 'DEFAULT_JSON_TYPE_KEY', 'hourglass'):
             result = self.runner.invoke(fsr_cli.cli, ['export', 'field-service', '--csv-file', 'dummy.csv'])
 
-        self.assertNotEqual(result.exit_code, 0, "CLI should exit with error if JSON not found.")
-        self.assertIn("Error: Auto-detection for 'hourglass' JSON file failed.", result.output)
+        # A missing JSON is no longer fatal at the group level (docx-driven
+        # program exports need no JSON); commands that DO need data emit
+        # their own error instead.
+        self.assertNotEqual(result.exit_code, 0, "field-service should still error without data.")
+        self.assertIn("continuing without congregation data", result.output)
+        self.assertIn("Congregation data not loaded", result.output)
 
 
     @patch('fsr.cli.load_and_prepare_data') # Mock load_and_prepare_data

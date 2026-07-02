@@ -50,9 +50,14 @@ def cli(ctx: click.Context, json_file: Optional[str], json_type: str):
             ctx.abort()
 
         if actual_json_file_path is None:
-            click.echo(click.style(f"Error: Auto-detection for '{json_type_display_name}' JSON file failed. No suitable file found in standard locations (current directory, Downloads).", fg="red"), err=True)
-            click.echo(click.style("Please specify the file path using the --json-file option, or ensure the correct --json-type is selected.", fg="red"), err=True)
-            ctx.abort()
+            # Not fatal: docx-driven commands (export midweek-program /
+            # public-talks) need no JSON. Commands that DO need it already
+            # check ctx.obj['cong_data'] and error out with guidance.
+            click.echo(click.style(
+                f"Info: no '{json_type_display_name}' JSON export found — "
+                "continuing without congregation data (program exports from "
+                "the .docx still work).", fg="yellow"))
+            return
         else:
             click.echo(click.style(f"Info: Auto-detected '{json_type_display_name}' JSON file: {actual_json_file_path}", fg="green"))
 
