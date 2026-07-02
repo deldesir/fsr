@@ -1,0 +1,198 @@
+"""Meeting-program exports for New World Scheduler.
+
+Two commands that read the Hourglass "Tout pwogram ansanm" .docx (the only
+place the meeting program leaves Hourglass — it is not in the JSON export)
+and write the CSVs New World Scheduler imports:
+
+  fsr export midweek-program   -> Date,Person,PartType,Assignment,School,LanguageGroupID
+  fsr export public-talks      -> Date,Congregation,PublicSpeaker,OutlineNumber,
+                                  OutlineName,Song,SpeakerConfirmed,Notes,
+                                  LanguageGroupID,Chairman,WatchtowerReader,
+                                  CustomWeekendAssignment1,CustomWeekendAssignment2,
+                                  Hospitality
+
+Formats match New World Scheduler's own exports byte-for-byte conventions:
+UTF-8 with BOM, midweek dated by the week's Monday, public talks dated by the
+Sunday itself, persons as "Firstname Lastname".
+
+The public-talk outline number is not printed in the document (only the talk
+title), so it is resolved against a jwlinker S-34 corpus database when one is
+available (--s34-db); otherwise the number is 0 and the title is used as-is —
+the same convention NWS uses for talks it cannot identify.
+"""
+
+import csv
+import os
+import re
+import sqlite3
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import Optional
+
+import click
+
+from fsr.core.docx_parser import (
+    docx_rows, parse_midweek, parse_weekend, split_meetings, _fold,
+)
+from fsr.core.file_finder import find_docx_file
+
+DEFAULT_S34_DB = '/library/jwlinker/jw_library.db'
+
+
+def _resolve_docx(docx_path: Optional[str]) -> str:
+    if docx_path:
+        return docx_path
+    found = find_docx_file()
+    if not found:
+        raise click.ClickException(
+            "No program .docx found (looked for 'Tout pwogram*.docx' in the "
+            "current directory, Downloads and /library/hourglass). "
+            "Pass --docx explicitly.")
+    click.echo(click.style(f"Info: using program document: {found}", fg="green"))
+    return found
+
+
+def _load_meetings(docx_path: str):
+    meetings = split_meetings(docx_rows(docx_path))
+    if not meetings:
+        raise click.ClickException(
+            f"No meetings found in '{docx_path}' — is this the Hourglass "
+            f"'all programs' export?")
+    return meetings
+
+
+def _monday(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
+def _write_csv(path: str, fieldnames, rows) -> None:
+    tmp = path + '.tmp'
+    # utf-8-sig: NWS's own exports carry a BOM.
+    with open(tmp, 'w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    os.replace(tmp, path)
+    click.echo(click.style(f"CSV file '{path}' created successfully.", fg="green"))
+
+
+def _default_out(stem: str) -> str:
+    return os.path.join(
+        os.getcwd(), f"NWScheduler_{stem}_{datetime.now():%Y%m%d}.csv")
+
+
+class OutlineResolver:
+    """Talk title -> S-34 outline number via a jwlinker corpus database.
+
+    The corpus stores topics under two naming formats ('103. Title' and
+    'No 78 Title'); both are matched, accent- and case-insensitively.
+    """
+
+    def __init__(self, db_path: Optional[str], lang_id: str):
+        self.titles = []
+        if db_path and Path(db_path).exists():
+            conn = sqlite3.connect(db_path)
+            rows = conn.execute(
+                "SELECT DISTINCT t.name FROM Topics t "
+                "JOIN Categories c ON t.category_id=c.id "
+                "JOIN Publications p ON c.publication_id=p.id "
+                "WHERE p.code='s34' AND p.language=?", (lang_id,)).fetchall()
+            conn.close()
+            for (name,) in rows:
+                m = re.match(r'(?:No\s+)?(\d+)[.\s]\s*(.*)', name)
+                if m:
+                    self.titles.append((int(m.group(1)), _fold(m.group(2))))
+
+    def resolve(self, title: str) -> int:
+        want = _fold(title)
+        best = 0
+        for num, corpus in self.titles:
+            if corpus == want:
+                return num
+            if want and not best and (want in corpus or corpus in want):
+                best = num
+        return best
+
+
+@click.command('midweek-program')
+@click.option('--docx', 'docx_path', type=click.Path(exists=True, dir_okay=False),
+              default=None,
+              help="Hourglass 'Tout pwogram ansanm' .docx (auto-detected if omitted).")
+@click.option('--csv-file', 'csv_filepath', type=click.Path(dir_okay=False),
+              default=None, help='Output CSV path (default: auto-generated).')
+def export_midweek_program(docx_path: Optional[str], csv_filepath: Optional[str]):
+    """Export the midweek (LNTNF) program to the NWS import CSV."""
+    docx_path = _resolve_docx(docx_path)
+    meetings = _load_meetings(docx_path)
+
+    rows = []
+    for meeting in meetings:
+        if meeting['date'].weekday() == 6:  # Sundays handled by public-talks
+            continue
+        week = _monday(meeting['date']).strftime('%Y/%m/%d')
+        for part in parse_midweek(meeting):
+            rows.append({
+                'Date': week,
+                'Person': part['person'],
+                'PartType': part['part_type'],
+                'Assignment': part['assignment'],
+                'School': part['school'],
+                'LanguageGroupID': 0,
+            })
+
+    if not rows:
+        raise click.ClickException('No midweek meetings found in the document.')
+
+    _write_csv(csv_filepath or _default_out('LNTNF_Pwogram'),
+               ['Date', 'Person', 'PartType', 'Assignment', 'School',
+                'LanguageGroupID'], rows)
+
+
+@click.command('public-talks')
+@click.option('--docx', 'docx_path', type=click.Path(exists=True, dir_okay=False),
+              default=None,
+              help="Hourglass 'Tout pwogram ansanm' .docx (auto-detected if omitted).")
+@click.option('--csv-file', 'csv_filepath', type=click.Path(dir_okay=False),
+              default=None, help='Output CSV path (default: auto-generated).')
+@click.option('--s34-db', default=DEFAULT_S34_DB, show_default=True,
+              help='jwlinker corpus DB for resolving outline numbers from titles.')
+@click.option('--s34-language', default='51', show_default=True,
+              help='MEPS language id for outline matching (51 = Haitian Creole).')
+def export_public_talks(docx_path: Optional[str], csv_filepath: Optional[str],
+                        s34_db: str, s34_language: str):
+    """Export the weekend public-talk program to the NWS import CSV."""
+    docx_path = _resolve_docx(docx_path)
+    meetings = _load_meetings(docx_path)
+    resolver = OutlineResolver(s34_db, s34_language)
+
+    fieldnames = ['Date', 'Congregation', 'PublicSpeaker', 'OutlineNumber',
+                  'OutlineName', 'Song', 'SpeakerConfirmed', 'Notes',
+                  'LanguageGroupID', 'Chairman', 'WatchtowerReader',
+                  'CustomWeekendAssignment1', 'CustomWeekendAssignment2',
+                  'Hospitality']
+    rows = []
+    for meeting in meetings:
+        if meeting['date'].weekday() != 6:
+            continue
+        talk = parse_weekend(meeting)
+        if not talk:
+            continue  # convention/assembly week — no talk to export
+        number = resolver.resolve(talk['title'])
+        rows.append({
+            'Date': talk['date'].strftime('%Y/%m/%d'),
+            'Congregation': talk['speaker_cong'],
+            'PublicSpeaker': talk['speaker'],
+            'OutlineNumber': number,
+            'OutlineName': f"{number} - {talk['title']}" if number else talk['title'],
+            'Song': '', 'SpeakerConfirmed': '', 'Notes': '',
+            'LanguageGroupID': 0,
+            'Chairman': talk['chairman'],
+            'WatchtowerReader': talk['wt_reader'],
+            'CustomWeekendAssignment1': '', 'CustomWeekendAssignment2': '',
+            'Hospitality': '',
+        })
+
+    if not rows:
+        raise click.ClickException('No public talks found in the document.')
+
+    _write_csv(csv_filepath or _default_out('Diskou_Piblik'), fieldnames, rows)

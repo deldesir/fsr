@@ -158,6 +158,35 @@ The `export field-service` command creates a new CSV file containing a comprehen
         fsr --json-file path/to/data.json export field-service --csv-file path/to/my_new_report.csv
         ```
 
+**3. Export the Meeting Programs (from the Hourglass .docx):**
+
+The meeting program is not part of Hourglass's JSON export — it only leaves
+Hourglass as the "Tout pwogram ansanm" Word document. These two commands parse
+that document directly and write the CSVs New World Scheduler imports:
+
+*   **Midweek (LNTNF) program** — `Date,Person,PartType,Assignment,School,LanguageGroupID`,
+    dated by the week's Monday, persons as "Firstname Lastname", schools 1
+    (main hall) / 2 (auxiliary class), assistants prefixed `Patnè:`:
+    ```bash
+    fsr export midweek-program                         # auto-detects the .docx
+    fsr export midweek-program --docx "Tout pwogram ansanm_2026-7.docx" --csv-file mw.csv
+    ```
+*   **Public talks program** — the full 14-column NWS weekend format
+    (`Date,Congregation,PublicSpeaker,OutlineNumber,OutlineName,…,Chairman,WatchtowerReader,…`),
+    dated by the Sunday itself:
+    ```bash
+    fsr export public-talks
+    ```
+    The document prints only the talk **title**; the S-34 outline **number** is
+    resolved against a jwlinker corpus database when available (`--s34-db`,
+    default `/library/jwlinker/jw_library.db`; `--s34-language`, default 51 =
+    Haitian Creole). Without a corpus the number is 0 and the title is used
+    as-is — the same convention NWS uses for unidentified talks.
+
+Both commands auto-detect the newest `Tout pwogram*.docx` in the current
+directory, Downloads, or `/library/hourglass`, and need **no JSON file**.
+Convention/assembly weeks (no meeting) are skipped automatically.
+
 ## JSON Data Structure
 
 `fsr` expects a JSON file with the following primary top-level keys:

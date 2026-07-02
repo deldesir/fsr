@@ -240,3 +240,9 @@ def export_csv_command(ctx: click.Context, csv_filepath: Optional[str], app_targ
             except OSError as ose:
                 click.echo(click.style(f"Additionally, failed to remove temporary file '{temp_csv_filepath}': {ose}", fg="red"), err=True)
         ctx.abort()
+
+
+# Meeting-program exports (docx-driven; no JSON required).
+from fsr.reports.programs import export_midweek_program, export_public_talks
+export_group.add_command(export_midweek_program)
+export_group.add_command(export_public_talks)
