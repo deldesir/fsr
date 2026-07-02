@@ -18,7 +18,16 @@ from fsr.core.constants import (
     CONFIGURABLE_APP_TARGETS
 )
 
-@click.group('export')
+from fsr.core.cli_utils import AliasedGroup
+
+
+@click.group('export', cls=AliasedGroup, aliases={
+    'fs': 'field-service',
+    'mw': 'midweek-program', 'lntnf': 'midweek-program',
+    'pt': 'public-talks', 'talks': 'public-talks', 'diskou': 'public-talks',
+    'org': 'organized', 'unified': 'organized',
+    'a': 'all',
+})
 def export_group():
     """Commands for exporting data."""
     pass
@@ -249,3 +258,6 @@ export_group.add_command(export_public_talks)
 
 from fsr.reports.programs import export_organized
 export_group.add_command(export_organized)
+
+from fsr.reports.programs import export_all
+export_group.add_command(export_all)
