@@ -246,3 +246,6 @@ def export_csv_command(ctx: click.Context, csv_filepath: Optional[str], app_targ
 from fsr.reports.programs import export_midweek_program, export_public_talks
 export_group.add_command(export_midweek_program)
 export_group.add_command(export_public_talks)
+
+from fsr.reports.programs import export_organized
+export_group.add_command(export_organized)
