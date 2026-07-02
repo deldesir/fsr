@@ -187,6 +187,41 @@ Both commands auto-detect the newest `Tout pwogram*.docx` in the current
 directory, Downloads, or `/library/hourglass`, and need **no JSON file**.
 Convention/assembly weeks (no meeting) are skipped automatically.
 
+**4. One-shot export & diagnostics:**
+
+*   **`fsr export all [--out-dir DIR]`** — produce every artifact the available
+    inputs allow (field-service CSV, both program CSVs, and the unified
+    Organized JSON), reporting anything skipped and why.
+*   **`fsr doctor`** — show what fsr auto-detects right now (JSON, docx, S-34
+    corpus, output directory) and which exports are therefore possible.
+
+### Aliases & prefixes
+
+Every command accepts explicit aliases and any unambiguous prefix:
+
+| Canonical | Aliases | Prefix example |
+|---|---|---|
+| `export` | `x`, `exp` | `fsr e …` |
+| `export field-service` | `fs` | `fsr x f` |
+| `export midweek-program` | `mw`, `lntnf` | `fsr x mid` |
+| `export public-talks` | `pt`, `talks`, `diskou` | `fsr x pub` |
+| `export organized` | `org`, `unified` | `fsr x o` |
+| `export all` | `a` | — |
+| `summary` | `sum` | — |
+| `doctor` | `dr`, `check` | — |
+
+So the whole monthly run is simply: `fsr x a`.
+
+### Shell completion
+
+fsr supports shell completion via click. For bash, add to `~/.bashrc`:
+
+```bash
+eval "$(_FSR_COMPLETE=bash_source fsr)"
+```
+
+(zsh: `_FSR_COMPLETE=zsh_source`; fish: `_FSR_COMPLETE=fish_source fsr | source`.)
+
 ## JSON Data Structure
 
 `fsr` expects a JSON file with the following primary top-level keys:

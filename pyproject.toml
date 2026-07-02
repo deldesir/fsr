@@ -1,30 +1,41 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
-# backend-path = ["."] # Removed: setuptools.build_meta is found via installed setuptools
 
 [project]
 name = "fsr"
-version = "0.1.0" # Matches setup.py
-description = "A CLI tool to process congregation field service data from a JSON file." # Matches setup.py
-readme = "README.md" # Assumes README.md is the long description
-requires-python = ">=3.6" # Matches setup.py
-license = "GPL-3.0-or-later" # SPDX identifier
-license-files = ["LICENSE"]  # Specify the license file
+version = "0.2.0"
+description = "Congregation data toolkit: Hourglass JSON/docx in — reports, NWS CSVs, and Organized's unified import out."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [
-  {name = "Blondel Mondésir"} # Email removed as it was empty in setup.py
+  {name = "Blondel Mondésir"}
 ]
 dependencies = [
-  "click" # From install_requires in setup.py
+  "click>=8.1",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    # "License :: OSI Approved :: GNU General Public License v3 (GPLv3)", # Removed, covered by SPDX identifier
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
+    "Environment :: Console",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/deldesir/fsr" # Matches setup.py, key quoted for TOML
+Homepage = "https://github.com/deldesir/fsr"
+Issues = "https://github.com/deldesir/fsr/issues"
 
 [project.scripts]
-fsr = "fsr.cli:cli" # Matches entry_points in setup.py
+fsr = "fsr.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["fsr", "fsr.*"]
