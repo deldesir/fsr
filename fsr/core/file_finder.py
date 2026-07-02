@@ -137,7 +137,9 @@ def find_json_file(json_type_key: Optional[str] = None) -> Optional[str]:
     # Common directory names for Downloads, case-insensitive
     download_dirs_names = ["Downloads", "downloads", "Téléchargements", "téléchargements"]
 
-    potential_dirs = [".", str(home_dir)]
+    # /library/hourglass is the IIAB drop directory — kept in sync
+    # with find_docx_file so both halves of an export are found together.
+    potential_dirs = [".", str(home_dir), "/library/hourglass"]
     for name in download_dirs_names:
         potential_dirs.append(str(home_dir / name))
 

@@ -1,232 +1,181 @@
-# Field Service Reporter (fsr)
+# fsr — Congregation Data Toolkit
 
-**fsr** is a command-line interface (CLI) tool designed to process congregation field service data from a JSON file. It can generate various summary reports and assist with data export tasks, like updating CSV files.
+**fsr** is a command-line toolkit for congregation data managed in
+[Hourglass](https://hourglass-app.com). It reads the two artifacts Hourglass
+exports — the JSON data export and the *Tout pwogram ansanm* program
+document — and produces import-ready files for **New World Scheduler** and
+**Organized**, as well as on-screen activity reports.
 
-## Features
-
-*   Load and parse service data from a structured JSON file.
-*   Auto-detects the main JSON data file if not specified, with options to guide detection.
-*   Generate monthly activity summary reports, detailing pioneer and publisher activity.
-*   Export service data to a new CSV file, providing a comprehensive view of activity across all months and publishers in the dataset. Output filename can be specified or auto-generated.
-*   Modular design, allowing for future expansion with new report types or export formats.
+```
+                         ┌──────────────────────────────────┐
+  hourglass-export.json ─┤                                  ├─ NWScheduler_field_service.csv
+                         │            fsr export            ├─ NWScheduler_LNTNF_Pwogram.csv
+  Tout pwogram *.docx ───┤                                  ├─ NWScheduler_Diskou_Piblik.csv
+                         └──────────────────────────────────┘─ organized-unified.json
+```
 
 ## Installation
 
-It is recommended to install `fsr` within a Python virtual environment.
-
-1.  **Create and activate a virtual environment (optional but recommended):**
-    ```bash
-    # For macOS/Linux
-    python3 -m venv .venv
-    source .venv/bin/activate
-    
-    # For Windows
-    # python -m venv .venv
-    # .venv\Scripts\activate
-    ```
-
-2.  **Install `fsr`:**
-    *   **For regular use:**
-        ```bash
-        pip install .
-        ```
-        This command installs the package from the current directory. `pip` will use the `pyproject.toml` file to build and install the package.
-    *   **For development (editable install):**
-        ```bash
-        pip install -e .
-        ```
-        This allows you to make changes to the source code and have them immediately reflected when you run the `fsr` command.
-
-## Usage
-
-The general command structure for `fsr` is:
-
 ```bash
-fsr [OPTIONS] COMMAND [ARGS]...
+pip install .                # regular use
+pip install -e '.[dev]'      # development (editable, with test dependencies)
 ```
 
-### Main Options for JSON Data Input
+Requires Python ≥ 3.10.
 
-The primary way to provide data to `fsr` is via a JSON file.
+## Quick start
 
-*   **`--json-file <path_to_data.json>`**: Specifies the path to your JSON data file. This option is **optional**.
-    *   If you provide the path, `fsr` will use that specific file.
-    *   If you do not provide the path, `fsr` will attempt to auto-detect the JSON file.
+```bash
+fsr doctor        # show which input files fsr detects and which exports are possible
+fsr export all    # produce every artifact the available inputs allow
+```
 
-*   **Auto-Detection Behavior (when `--json-file` is omitted):**
-    *   `fsr` searches for files like `hourglass-export.json` (or variants with numbers, e.g., `hourglass-export (1).json`) in the current directory and your user's "Downloads" folder.
-    *   When multiple matching files are found, `fsr` selects the one that appears to be the latest.
-    *   **`--json-type <type>`**: You can guide the auto-detection by specifying the type of JSON file.
-        *   Supported types: `hourglass` (default). This corresponds to looking for "hourglass-export\*.json" files.
-        *   Example: `fsr --json-type hourglass summary monthly-activity --month 2023-10`
-        *   This option is ignored if `--json-file` is explicitly provided.
+Artifacts that cannot be produced are skipped, with the reason printed.
 
-You would typically use the explicit `--json-file` option if your file is named differently than what auto-detection expects or if it's stored in a non-standard location.
+## Inputs and discovery
 
-### Commands and Examples:
+fsr auto-detects its input files — newest match wins — in the current
+directory, the user's Downloads folder, and `/library/hourglass`:
 
-Below are examples of common commands.
+| Input | Expected name | Contents |
+|---|---|---|
+| Hourglass JSON export | `hourglass-export*.json` | publishers, privileges, service reports, attendance, groups |
+| Hourglass program document | `Tout pwogram*.docx` | the meeting program (midweek and weekend), which is not part of the JSON export |
 
-**1. Generate a Monthly Activity Summary:**
+Explicit paths take precedence: `--json-file` (top level) and `--docx`
+(per command). `fsr doctor` reports what would be used and how recent it is.
 
-The `fsr summary monthly-activity --month YYYY-MM` command generates a console-based summary report of congregation activity for the specified month.
+## Commands
 
-*   **Output Details:** The summary is presented in Haitian Creole and includes the following categories:
-    *   'Pwoklamatè ki pa Pyonye' (Non-Pioneer Publishers)
-    *   'Pyonye Oksilyè' (Auxiliary Pioneers)
-    *   'Pyonye Pèmanan' (Regular Pioneers)
-    *   'Pyonye Espesyal' (Special Pioneers)
+### Exports
 
-    For each category, the following information is provided:
-    *   **"Total Lè"** (Total Hours): Sum of hours (`minutes // 60`) from reports in that category. This is shown for 'Pyonye Oksilyè', 'Pyonye Pèmanan', and 'Pyonye Espesyal' only.
-    *   **"Total Etid"** (Total Studies): Sum of Bible studies reported.
-    *   **Count of reporting publishers:** A line indicating how many unique individuals reported in that category for the month (e.g., "_Te gen X pwoklamatè ki pa pyonye ki te bay rapò pou mwa sa._").
+| Command | Requires | Output |
+|---|---|---|
+| `fsr export all [--out-dir DIR]` | any | every artifact below, in one run |
+| `fsr export field-service` | JSON | New World Scheduler field-service CSV |
+| `fsr export midweek-program` | docx | New World Scheduler midweek (LNTNF) program CSV |
+| `fsr export public-talks` | docx | New World Scheduler weekend program CSV |
+| `fsr export organized` | both | unified JSON for Organized's full import |
 
-    The report also includes a "Total Etid Kongregasyon an" (Total Congregation Bible Studies).
+**`field-service`** — `Date,FirstName,LastName,SharedInMinistry,BibleStudies,
+AP,Hours,Credit,Remarks`; one row per publisher per reported month. See
+[Activity determination](#data-reference) for how `SharedInMinistry` is
+derived.
 
-*   **Data Interpretation for Summary:**
-    *   **Active Participation:** A publisher is considered to have participated in ministry for summary aggregation if their report for the month shows positive `minutes` OR positive `studies`.
-    *   **`has_reported_field_service` Flag:** If a report explicitly contains `has_reported_field_service: false`, that report's `minutes` and `studies` are **not** included in the summary totals, even if they are positive. If the flag is `true` or absent/`null`, activity is based on positive minutes/studies.
-    *   **Pioneer Categorization:** Determined by the `pioneer` field in each monthly report:
-        *   `'Auxiliary'` -> 'Pyonye Oksilyè'
-        *   `'Regular'` -> 'Pyonye Pèmanan'
-        *   `'Special'` -> 'Pyonye Espesyal'
-        *   Other values (e.g., `null`, empty string, 'Publisher') -> 'Pwoklamatè ki pa Pyonye'.
+**`midweek-program`** — `Date,Person,PartType,Assignment,School,
+LanguageGroupID`; the complete midweek program: chairman,
+auxiliary-classroom counselor, prayers, Treasures talk, Spiritual Gems, Bible
+reading per hall, Apply-yourself parts with students and assistants
+(`Patnè:`) per hall, Living-as-Christians parts, and CBS conductor + reader.
+Dated by the week's Monday; persons as `Firstname Lastname`; school `1` is
+the main hall, `2` the auxiliary class.
 
-*   **Example Usage:**
-    *   With auto-detection of JSON file (defaulting to `hourglass` type):
-        ```bash
-        fsr summary monthly-activity --month 2023-10
-        ```
-    *   Specifying the JSON file:
-        ```bash
-        fsr --json-file path/to/your/data.json summary monthly-activity --month 2023-10
-        ```
+**`public-talks`** — the 14-column New World Scheduler weekend format
+(`Date,Congregation,PublicSpeaker,OutlineNumber,OutlineName,…,Chairman,
+WatchtowerReader,…`), dated by the Sunday. The document prints only talk
+titles; the S-34 outline number is resolved against a jwlinker corpus
+database when one is available (`--s34-db`, default
+`/library/jwlinker/jw_library.db`; `--s34-language`, default `51` = Haitian
+Creole). Titles that cannot be resolved export with number `0` and a
+per-title warning.
 
-**2. Export Service Data to a New CSV File:**
+**`organized`** — a single JSON carrying the complete congregation state: the
+Hourglass export passed through verbatim, plus a `program` key with the
+weekend talks (resolved outline numbers, speaker and congregation, chairman,
+Watchtower reader) and the full midweek part list. Organized's
+`import_hourglass` command consumes this file directly.
 
-The `export field-service` command creates a new CSV file containing a comprehensive report of service activity. It processes all available months from the reports in the input JSON and includes a row for every publisher for each of those months.
+All CSVs are written UTF-8 with BOM and atomically (temporary file + rename),
+matching New World Scheduler's own export conventions. Convention and
+assembly weeks carry no program and are skipped.
 
-*   **Command Structure:**
-    ```bash
-    fsr export field-service [OPTIONS]
-    ```
-*   **Output Filename Option (`--csv-file <path/to/your/file.csv>`):**
-    *   This option is now **optional**.
-    *   If you provide a path (e.g., `--csv-file my_export.csv`), that specific path will be used.
-    *   **Default Filename**: If `--csv-file` is omitted, a default filename will be automatically generated in your current working directory.
-        *   The format is: `APP-TARGET_INPUT-JSON-FILENAME-STEM_YYYYMMDD.csv`.
-        *   Example: If your input JSON file (after resolving paths) was `hourglass-export (1).json` and the app target is `NWScheduler` (the default), the output might be `NWScheduler_hourglass-export (1)_20231027.csv`.
+### Reports
 
-*   **Application Target Option (`--app-target <target_app>`):**
-    *   Use this option to specify the target application for the CSV export.
-    *   This primarily influences the default filename if `--csv-file` is not provided. It can also serve as metadata for other tools consuming the CSV.
-    *   Supported targets: `NWScheduler` (default).
-    *   Example: `fsr export field-service --app-target NWScheduler` (often redundant if it's the default, but useful if other targets are added).
+**`fsr summary monthly-activity --month YYYY-MM`** — a per-category activity
+summary for one month, printed to the terminal: report counts, hours, and
+Bible studies for publishers and for auxiliary, regular, and special
+pioneers, plus congregation Bible-study totals. Uses the same
+activity-determination rules as the field-service export.
 
-*   **Output Rows:**
-    *   For every unique month found across all reports in the input JSON data, a row is generated for *every publisher* listed in the `publishers` section of the JSON.
-    *   If a publisher has a specific report for a given month, that data is used to populate their row for that month.
-    *   If a publisher does *not* have a specific report for a given month (but that month exists in the overall dataset because other publishers reported), a row is still generated. In this case, it will contain default values indicating no activity for that specific publisher-month (e.g., `SharedInMinistry: False`, empty strings for hours, studies, etc.).
+### Diagnostics
 
-*   **CSV Columns:**
-    The generated CSV file will have the following columns:
-    `Date`, `FirstName`, `LastName`, `SharedInMinistry`, `BibleStudies`, `AP`, `Hours`, `Credit`, `Remarks`
+**`fsr doctor`** — shows the detected JSON and docx (with age), whether the
+S-34 corpus database is available for outline resolution, whether the working
+directory is writable, and which exports are consequently possible. Each gap
+comes with a suggested fix.
 
-*   **Key Field Logic Explanation (same as before, summarized):**
-    *   `Date`: `YYYY-MM`.
-    *   `SharedInMinistry`: Based on activity and `has_reported_field_service` flag.
-    *   `AP` (Auxiliary Pioneer): `True` if `SharedInMinistry` and `pioneer` status is `'Auxiliary'`.
-    *   `Hours`, `BibleStudies`, `Credit`: Show values if `SharedInMinistry` is `True` and data is positive/present.
-    *   `Remarks`: Shown if present.
+### Aliases and prefixes
 
-*   **Example Usage:**
-    *   **Auto-detect JSON, generate default CSV name for NWScheduler:**
-        ```bash
-        fsr export field-service
-        ```
-    *   **Auto-detect JSON, specify CSV output file:**
-        ```bash
-        fsr export field-service --csv-file path/to/my_new_report.csv
-        ```
-    *   **Specify JSON input, generate default CSV for a specific app target:**
-        ```bash
-        fsr --json-file path/to/data.json export field-service --app-target NWScheduler
-        ```
-    *   **Specify both JSON input and CSV output:**
-        ```bash
-        fsr --json-file path/to/data.json export field-service --csv-file path/to/my_new_report.csv
-        ```
+Every command accepts explicit aliases and any unambiguous prefix; ambiguous
+prefixes fail with the list of candidates. Canonical names are always shown
+in help and usage output.
 
-**3. Export the Meeting Programs (from the Hourglass .docx):**
+| Canonical | Aliases |
+|---|---|
+| `export` | `x`, `exp` |
+| `export field-service` | `fs` |
+| `export midweek-program` | `mw`, `lntnf` |
+| `export public-talks` | `pt`, `talks`, `diskou` |
+| `export organized` | `org`, `unified` |
+| `export all` | `a` |
+| `summary` | `sum` |
+| `doctor` | `dr`, `check` |
 
-The meeting program is not part of Hourglass's JSON export — it only leaves
-Hourglass as the "Tout pwogram ansanm" Word document. These two commands parse
-that document directly and write the CSVs New World Scheduler imports:
+`fsr --version` prints the installed version.
 
-*   **Midweek (LNTNF) program** — `Date,Person,PartType,Assignment,School,LanguageGroupID`,
-    dated by the week's Monday, persons as "Firstname Lastname", schools 1
-    (main hall) / 2 (auxiliary class), assistants prefixed `Patnè:`:
-    ```bash
-    fsr export midweek-program                         # auto-detects the .docx
-    fsr export midweek-program --docx "Tout pwogram ansanm_2026-7.docx" --csv-file mw.csv
-    ```
-*   **Public talks program** — the full 14-column NWS weekend format
-    (`Date,Congregation,PublicSpeaker,OutlineNumber,OutlineName,…,Chairman,WatchtowerReader,…`),
-    dated by the Sunday itself:
-    ```bash
-    fsr export public-talks
-    ```
-    The document prints only the talk **title**; the S-34 outline **number** is
-    resolved against a jwlinker corpus database when available (`--s34-db`,
-    default `/library/jwlinker/jw_library.db`; `--s34-language`, default 51 =
-    Haitian Creole). Without a corpus the number is 0 and the title is used
-    as-is — the same convention NWS uses for unidentified talks.
+### Shell completion
 
-Both commands auto-detect the newest `Tout pwogram*.docx` in the current
-directory, Downloads, or `/library/hourglass`, and need **no JSON file**.
-Convention/assembly weeks (no meeting) are skipped automatically.
+```bash
+# bash (~/.bashrc)
+eval "$(_FSR_COMPLETE=bash_source fsr)"
+# zsh: _FSR_COMPLETE=zsh_source   fish: _FSR_COMPLETE=fish_source fsr | source
+```
 
-## JSON Data Structure
+## Data reference
 
-`fsr` expects a JSON file with the following primary top-level keys:
+<details>
+<summary><strong>Hourglass JSON structure</strong></summary>
 
-*   `"congregation"`: An object containing general information about the congregation (e.g., name, ID). This data is loaded but not directly used by current commands.
-*   `"publishers"`: A list of publisher objects. Each publisher object should ideally contain:
-    *   `"id"`: A unique identifier for the publisher.
-    *   `"firstname"`: Publisher's first name.
-    *   `"lastname"`: Publisher's last name.
-*   `"reports"`: A list of individual service report objects. Each report object should contain:
-    *   `"user"`: A nested object with an `"id"` field matching a publisher's ID (e.g., `{"user": {"id": 123}}`).
-    *   `"year"`: Integer, the year of the report (e.g., `2023`).
-    *   `"month"`: Integer, the month of the report (e.g., `10` for October).
-    *   `"pioneer"`: String or `null`, indicating pioneer status (e.g., "Auxiliary", "Regular", "Special", or `null`).
-    *   `"studies"`: Integer or `null`, number of bible studies.
-    *   `"minutes"`: Integer or `null`, total minutes in service.
-    *   `"credithours"`: Numeric (integer or float), string representation of a number, or `null`, for hours to be credited.
-    *   `"remarks"`: String or `null`, any remarks for the report.
-    *   `"has_reported_field_service"`: Boolean (`true`/`false`) or `null`. This field is optional.
-        *   If `true`, it confirms the publisher shared in service.
-        *   If `false`, it explicitly states the publisher did *not* share in service for that month.
-            *   For CSV export (`export field-service`): Fields like `Hours`, `Studies`, `Credit` will be empty, and `AP` status will be `False`, regardless of other data in `minutes`, `studies`, etc. Remarks will still be preserved.
-            *   For summary reports (`summary monthly-activity`): The report's numeric activities (minutes, studies) are excluded from aggregation.
-        *   If `null` or absent:
-            *   For CSV export: Sharing status (`SharedInMinistry`) is inferred based on positive values in `minutes` or `studies`.
-            *   For summary reports: Active participation is inferred based on positive values in `minutes` or `studies`.
+fsr expects these top-level keys:
 
-### Note on Activity Determination (for CSV Export and Summaries)
+* `congregation` — general congregation information (loaded, not currently
+  consumed by any command).
+* `publishers` — list of `{id, firstname, lastname, …}`.
+* `reports` — list of monthly service reports:
+  `{user: {id}, year, month, pioneer, studies, minutes, credithours, remarks,
+  has_reported_field_service}`.
 
-The determination of whether a publisher's activity is included or how `SharedInMinistry` is set depends on a combination of factors:
+Additional keys (`privileges`, `attendance`, `fsGroups`, `monthlyTotals`,
+`notPublishers`, `addresses`) pass through untouched into the unified
+Organized JSON, which imports them fully.
 
-1.  **`has_reported_field_service` flag (in JSON report data):**
-    *   **Explicit `false`:** This is a definitive indication of no participation.
-        *   In `export field-service`: `SharedInMinistry` will be `False`. Consequently, `Hours`, `BibleStudies`, `Credit` will be empty, and `AP` will be `False`. `Remarks` are still shown.
-        *   In `summary monthly-activity`: This report's `minutes` and `studies` will be ignored for aggregation into totals. The publisher will not be counted as "reporting" for that category unless they have other qualifying reports for the same month (which is unlikely for a single person).
-    *   **Explicit `true`:** This is a definitive indication of participation.
-        *   In `export field-service`: `SharedInMinistry` will be `True`. Other fields (`Hours`, `BibleStudies`, etc.) are then populated based on their specific rules (e.g., positive values).
-        *   In `summary monthly-activity`: The report's `minutes` and `studies` are included in aggregations if they are positive.
-    *   **`null` or Missing:** If the `has_reported_field_service` flag is not present or is `null`:
-        *   In `export field-service`: `SharedInMinistry` is inferred. It becomes `True` if the report contains positive `minutes` OR positive `studies`; otherwise, it's `False`.
-        *   In `summary monthly-activity`: Active participation for aggregation is inferred. It's considered active if the report contains positive `minutes` OR positive `studies`.
+</details>
 
-This nuanced handling allows for flexibility if the source JSON sometimes omits the `has_reported_field_service` flag, while still respecting it when it's explicitly provided.
+<details>
+<summary><strong>Activity determination</strong></summary>
+
+Whether a report counts as shared ministry (`SharedInMinistry` in the
+field-service CSV, inclusion in summary totals) follows one rule set:
+
+1. `has_reported_field_service: false` — definitive **no**: hours, studies,
+   and credit export empty, `AP` is `False`, and aggregations exclude the
+   report; remarks are preserved.
+2. `has_reported_field_service: true` — definitive **yes**: fields populate
+   from their values.
+3. Flag `null` or absent — **inferred**: shared if the report has positive
+   `minutes` or positive `studies`.
+
+</details>
+
+## Development
+
+```bash
+pip install -e '.[dev]'
+pytest tests/
+```
+
+Packaging is defined solely in `pyproject.toml` (PEP 621).
+
+## License
+
+[GPL-3.0-or-later](LICENSE)

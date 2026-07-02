@@ -7,10 +7,16 @@ import json # Required for json.JSONDecodeError
 from typing import Optional
 
 from fsr.core.constants import DEFAULT_JSON_TYPE_KEY, CONFIGURABLE_JSON_TYPES
+from fsr.core.cli_utils import AliasedGroup
 from fsr.core.data_loader import load_and_prepare_data, CongregationData
 from fsr.core.file_finder import find_json_file
 
-@click.group()
+@click.group(cls=AliasedGroup, aliases={
+    'x': 'export', 'exp': 'export',
+    'sum': 'summary',
+    'dr': 'doctor', 'check': 'doctor',
+})
+@click.version_option(package_name='fsr', prog_name='fsr')
 @click.option(
     '--json-file',
     type=click.Path(exists=True, dir_okay=False, readable=True, resolve_path=True),
@@ -89,6 +95,9 @@ cli.add_command(summary_group)
 
 from fsr.reports.exports import export_group
 cli.add_command(export_group)
+
+from fsr.reports.doctor import doctor
+cli.add_command(doctor)
 
 if __name__ == "__main__":
     # The type hint for json_file needs to be Optional[str] for the cli function
