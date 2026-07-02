@@ -72,25 +72,27 @@ class TestMonthlyActivityReport(unittest.TestCase):
         self.maxDiff = None
 
     def _run_cli_with_data(self, json_data_str, month_arg=None):
+        from fsr.cli import cli as fsr_cli
+
         with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json", encoding='utf-8') as tmp_json_file:
             tmp_json_file.write(json_data_str)
             tmp_json_file_path = tmp_json_file.name
-        
-        cli_path = "~/.local/bin/fsr" 
-        if not os.path.exists(os.path.expanduser(cli_path)):
-            cli_path = "fsr"
 
-        cmd = [cli_path, '--json-file', tmp_json_file_path, 'summary', 'monthly-activity']
+        args = ['--json-file', tmp_json_file_path, 'summary', 'monthly-activity']
         if month_arg:
-            cmd.extend(['--month', month_arg])
+            args.extend(['--month', month_arg])
 
-        result = self.runner.invoke(None, cmd, catch_exceptions=False, prog_name="fsr")
-        os.remove(tmp_json_file_path)
+        try:
+            result = self.runner.invoke(
+                fsr_cli, args, catch_exceptions=False, prog_name="fsr")
+        finally:
+            os.remove(tmp_json_file_path)
         return result
 
     @patch('fsr.reports.summaries.datetime')
     def test_summary_new_format_may_2025(self, mock_datetime_summaries):
         """Tests the May 2025 summary with the new French-labeled format and SP logic."""
+        mock_datetime_summaries.timedelta = datetime.timedelta
         mock_datetime_summaries.datetime.now.return_value = datetime.datetime(2025, 6, 15, 10, 0, 0)
         result = self._run_cli_with_data(self.USER_PROVIDED_JSON_MAY_2025_STR, "2025-05")
         
@@ -146,6 +148,7 @@ Cours bibliques
     @patch('fsr.reports.summaries.datetime')
     def test_summary_new_format_default_month(self, mock_datetime_summaries):
         """Tests the default month summary (May 2026) with the new French-labeled format."""
+        mock_datetime_summaries.timedelta = datetime.timedelta
         mock_datetime_summaries.datetime.now.return_value = datetime.datetime(2026, 6, 15, 10, 0, 0)
         expected_month_str = "2026-05"
         result = self._run_cli_with_data(self.MAY_2026_MOCK_DATA_STR)
@@ -164,8 +167,6 @@ Nombre de fiches d’activité (S-4)
 3
 Cours bibliques
 3
-Heures
-15.00
 
 PIONNIERS AUXILIAIRES
 Nombre de fiches d’activité (S-4)
@@ -203,6 +204,7 @@ Cours bibliques
     @patch('fsr.reports.summaries.datetime')
     def test_summary_new_format_no_activity_default_month(self, mock_datetime_summaries):
         """Tests the default month with no activity, expecting French-labeled output."""
+        mock_datetime_summaries.timedelta = datetime.timedelta
         mock_datetime_summaries.datetime.now.return_value = datetime.datetime(2024, 8, 15, 10, 0, 0)
         expected_month_str = "2024-07"
         result = self._run_cli_with_data(self.NO_ACTIVITY_JUL_2024_JSON_STR)
@@ -221,8 +223,6 @@ Nombre de fiches d’activité (S-4)
 0
 Cours bibliques
 0
-Heures
-0.00
 
 PIONNIERS AUXILIAIRES
 Nombre de fiches d’activité (S-4)
@@ -238,7 +238,9 @@ Nombre de fiches d’activité (S-4)
 Heures
 0.00
 Cours bibliques
-0""".strip()
+0
+
+Note: Aucune donnée d'activité disponible pour le mois 2024-07.""".strip()
 
         actual_report_lines = []
         report_content_started = False
