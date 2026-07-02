@@ -1,111 +1,127 @@
 # fsr — Congregation Data Toolkit
 
-**fsr** turns the two artifacts Hourglass can export — the JSON data export and
-the *Tout pwogram ansanm* program document — into every file your downstream
-tools need: import-ready CSVs for **New World Scheduler** and a single unified
-JSON for **Organized**'s full server-side import.
+**fsr** is a command-line toolkit for congregation data managed in
+[Hourglass](https://hourglass-app.com). It reads the two artifacts Hourglass
+exports — the JSON data export and the *Tout pwogram ansanm* program
+document — and produces import-ready files for **New World Scheduler** and
+**Organized**, as well as on-screen activity reports.
 
 ```
-                         ┌──────────────────────────────────────────────┐
-  hourglass-export.json ─┤  fsr export all                              │─ NWScheduler_field_service.csv
-                         │                                              │─ NWScheduler_LNTNF_Pwogram.csv
-  Tout pwogram *.docx ───┤  (or any individual export below)            │─ NWScheduler_Diskou_Piblik.csv
-                         └──────────────────────────────────────────────┘─ organized-unified.json
+                         ┌──────────────────────────────────┐
+  hourglass-export.json ─┤                                  ├─ NWScheduler_field_service.csv
+                         │            fsr export            ├─ NWScheduler_LNTNF_Pwogram.csv
+  Tout pwogram *.docx ───┤                                  ├─ NWScheduler_Diskou_Piblik.csv
+                         └──────────────────────────────────┘─ organized-unified.json
 ```
+
+## Installation
+
+```bash
+pip install .                # regular use
+pip install -e '.[dev]'      # development (editable, with test dependencies)
+```
+
+Requires Python ≥ 3.10.
 
 ## Quick start
 
 ```bash
-pip install .                 # or: pip install -e '.[dev]' for development
-
-fsr doctor                    # what can fsr see, and which exports are possible?
-fsr export all                # produce everything the available inputs allow
+fsr doctor        # show which input files fsr detects and which exports are possible
+fsr export all    # produce every artifact the available inputs allow
 ```
 
-`fsr export all` (alias: `fsr x a`) is the whole monthly run: drop the latest
-Hourglass exports where fsr can find them, run it, done. Anything that cannot
-be produced is skipped with the reason printed.
+Artifacts that cannot be produced are skipped, with the reason printed.
 
-## Inputs & discovery
+## Inputs and discovery
 
-fsr auto-detects its inputs — newest match wins — in the **current directory**,
-your **Downloads** folder, and **`/library/hourglass`**:
+fsr auto-detects its input files — newest match wins — in the current
+directory, the user's Downloads folder, and `/library/hourglass`:
 
-| Input | Expected name | Carries |
+| Input | Expected name | Contents |
 |---|---|---|
 | Hourglass JSON export | `hourglass-export*.json` | publishers, privileges, service reports, attendance, groups |
-| Hourglass program document | `Tout pwogram*.docx` | the meeting program (midweek & weekend) — **not present in the JSON** |
+| Hourglass program document | `Tout pwogram*.docx` | the meeting program (midweek and weekend), which is not part of the JSON export |
 
-Explicit paths always win: `--json-file` (top level) and `--docx` (per command).
-Run `fsr doctor` at any time to see exactly what would be used, how fresh it
-is, and what that makes possible.
+Explicit paths take precedence: `--json-file` (top level) and `--docx`
+(per command). `fsr doctor` reports what would be used and how recent it is.
 
-## Exports
+## Commands
 
-### `fsr export all [--out-dir DIR]`
+### Exports
 
-Everything below, in one run, into one directory. Skips (and says why) any
-artifact whose input is missing.
-
-### `fsr export field-service` — NWS field service CSV
-
-`Date,FirstName,LastName,SharedInMinistry,BibleStudies,AP,Hours,Credit,Remarks`
-— one row per publisher per reported month, ready for New World Scheduler's
-field-service import. Requires the JSON. (See
-[Activity determination](#activity-determination) for how `SharedInMinistry`
-is derived.)
-
-### `fsr export midweek-program` — NWS midweek (LNTNF) CSV
-
-`Date,Person,PartType,Assignment,School,LanguageGroupID` — the full midweek
-program: chairman, auxiliary-classroom counselor, prayers, Treasures talk,
-Spiritual Gems, Bible reading per hall, Apply-yourself parts with students
-*and* assistants (`Patnè:`) per hall, Living-as-Christians parts, CBS
-conductor + reader. Dated by the week's Monday; persons as
-`Firstname Lastname`; schools `1` (main hall) / `2` (auxiliary class).
-Requires the docx.
-
-### `fsr export public-talks` — NWS weekend program CSV
-
-The full 14-column NWS weekend format (`Date,Congregation,PublicSpeaker,
-OutlineNumber,OutlineName,…,Chairman,WatchtowerReader,…`), dated by the Sunday
-itself. The document prints only talk **titles**; fsr resolves the S-34
-outline **number** against a jwlinker corpus database (`--s34-db`, default
-`/library/jwlinker/jw_library.db`; `--s34-language`, default `51` = Haitian
-Creole). Unresolvable titles export with number `0` and a per-title warning —
-the same convention NWS itself uses. Requires the docx.
-
-### `fsr export organized` — unified JSON for Organized
-
-One file carrying the **complete congregation state**: the Hourglass JSON
-passed through verbatim, plus a `program` key with the weekend talks (resolved
-outline numbers, speaker + congregation, chairman, Watchtower reader) and the
-full midweek part list parsed from the docx. Organized's `import_hourglass`
-command consumes it directly — persons, reports, attendance, groups and both
-meeting programs from a single import. Requires both inputs.
-
-**Format conventions (all CSVs):** UTF-8 with BOM, atomic writes
-(temp-file + rename), byte-format compatible with New World Scheduler's own
-exports. Convention/assembly weeks are skipped automatically.
-
-## Command reference
-
-```
-fsr [--json-file FILE] [--json-type TYPE] COMMAND
-```
-
-| Command | Aliases | Purpose |
+| Command | Requires | Output |
 |---|---|---|
-| `export all` | `x a` | every possible artifact, one run |
-| `export field-service` | `x fs` | NWS field-service CSV |
-| `export midweek-program` | `x mw`, `x lntnf` | NWS midweek program CSV |
-| `export public-talks` | `x pt`, `x talks`, `x diskou` | NWS weekend program CSV |
-| `export organized` | `x org`, `x unified` | unified JSON for Organized |
-| `doctor` | `dr`, `check` | show detected inputs & possible exports |
-| `summary monthly-activity` | `sum …` | terminal activity report (see below) |
+| `fsr export all [--out-dir DIR]` | any | every artifact below, in one run |
+| `fsr export field-service` | JSON | New World Scheduler field-service CSV |
+| `fsr export midweek-program` | docx | New World Scheduler midweek (LNTNF) program CSV |
+| `fsr export public-talks` | docx | New World Scheduler weekend program CSV |
+| `fsr export organized` | both | unified JSON for Organized's full import |
 
-Any **unambiguous prefix** also works (`fsr x pub`); ambiguous prefixes fail
-with the candidate list. `fsr --version` prints the version.
+**`field-service`** — `Date,FirstName,LastName,SharedInMinistry,BibleStudies,
+AP,Hours,Credit,Remarks`; one row per publisher per reported month. See
+[Activity determination](#data-reference) for how `SharedInMinistry` is
+derived.
+
+**`midweek-program`** — `Date,Person,PartType,Assignment,School,
+LanguageGroupID`; the complete midweek program: chairman,
+auxiliary-classroom counselor, prayers, Treasures talk, Spiritual Gems, Bible
+reading per hall, Apply-yourself parts with students and assistants
+(`Patnè:`) per hall, Living-as-Christians parts, and CBS conductor + reader.
+Dated by the week's Monday; persons as `Firstname Lastname`; school `1` is
+the main hall, `2` the auxiliary class.
+
+**`public-talks`** — the 14-column New World Scheduler weekend format
+(`Date,Congregation,PublicSpeaker,OutlineNumber,OutlineName,…,Chairman,
+WatchtowerReader,…`), dated by the Sunday. The document prints only talk
+titles; the S-34 outline number is resolved against a jwlinker corpus
+database when one is available (`--s34-db`, default
+`/library/jwlinker/jw_library.db`; `--s34-language`, default `51` = Haitian
+Creole). Titles that cannot be resolved export with number `0` and a
+per-title warning.
+
+**`organized`** — a single JSON carrying the complete congregation state: the
+Hourglass export passed through verbatim, plus a `program` key with the
+weekend talks (resolved outline numbers, speaker and congregation, chairman,
+Watchtower reader) and the full midweek part list. Organized's
+`import_hourglass` command consumes this file directly.
+
+All CSVs are written UTF-8 with BOM and atomically (temporary file + rename),
+matching New World Scheduler's own export conventions. Convention and
+assembly weeks carry no program and are skipped.
+
+### Reports
+
+**`fsr summary monthly-activity --month YYYY-MM`** — a per-category activity
+summary for one month, printed to the terminal: report counts, hours, and
+Bible studies for publishers and for auxiliary, regular, and special
+pioneers, plus congregation Bible-study totals. Uses the same
+activity-determination rules as the field-service export.
+
+### Diagnostics
+
+**`fsr doctor`** — shows the detected JSON and docx (with age), whether the
+S-34 corpus database is available for outline resolution, whether the working
+directory is writable, and which exports are consequently possible. Each gap
+comes with a suggested fix.
+
+### Aliases and prefixes
+
+Every command accepts explicit aliases and any unambiguous prefix; ambiguous
+prefixes fail with the list of candidates. Canonical names are always shown
+in help and usage output.
+
+| Canonical | Aliases |
+|---|---|
+| `export` | `x`, `exp` |
+| `export field-service` | `fs` |
+| `export midweek-program` | `mw`, `lntnf` |
+| `export public-talks` | `pt`, `talks`, `diskou` |
+| `export organized` | `org`, `unified` |
+| `export all` | `a` |
+| `summary` | `sum` |
+| `doctor` | `dr`, `check` |
+
+`fsr --version` prints the installed version.
 
 ### Shell completion
 
@@ -115,14 +131,6 @@ eval "$(_FSR_COMPLETE=bash_source fsr)"
 # zsh: _FSR_COMPLETE=zsh_source   fish: _FSR_COMPLETE=fish_source fsr | source
 ```
 
-## Terminal reports
-
-`fsr summary monthly-activity --month YYYY-MM` prints a per-category activity
-summary (publishers, auxiliary/regular/special pioneers: report counts, hours,
-Bible studies) to the terminal. It shares the
-[activity-determination rules](#activity-determination) with the
-field-service export.
-
 ## Data reference
 
 <details>
@@ -130,7 +138,8 @@ field-service export.
 
 fsr expects these top-level keys:
 
-* `congregation` — general congregation info (loaded, not currently consumed).
+* `congregation` — general congregation information (loaded, not currently
+  consumed by any command).
 * `publishers` — list of `{id, firstname, lastname, …}`.
 * `reports` — list of monthly service reports:
   `{user: {id}, year, month, pioneer, studies, minutes, credithours, remarks,
@@ -143,17 +152,17 @@ Organized JSON, which imports them fully.
 </details>
 
 <details>
-<summary id="activity-determination"><strong>Activity determination</strong></summary>
+<summary><strong>Activity determination</strong></summary>
 
-Whether a report counts as shared ministry (`SharedInMinistry` in the CSV,
-inclusion in summary totals) follows one rule set:
+Whether a report counts as shared ministry (`SharedInMinistry` in the
+field-service CSV, inclusion in summary totals) follows one rule set:
 
-1. `has_reported_field_service: false` — definitive **no**: hours/studies/
-   credit export empty, `AP` is `False`, aggregations exclude the report;
-   remarks are preserved.
+1. `has_reported_field_service: false` — definitive **no**: hours, studies,
+   and credit export empty, `AP` is `False`, and aggregations exclude the
+   report; remarks are preserved.
 2. `has_reported_field_service: true` — definitive **yes**: fields populate
    from their values.
-3. Flag `null`/absent — **inferred**: shared if the report has positive
+3. Flag `null` or absent — **inferred**: shared if the report has positive
    `minutes` or positive `studies`.
 
 </details>
@@ -165,7 +174,7 @@ pip install -e '.[dev]'
 pytest tests/
 ```
 
-Requires Python ≥ 3.10. Packaging is `pyproject.toml`-only (PEP 621).
+Packaging is defined solely in `pyproject.toml` (PEP 621).
 
 ## License
 
