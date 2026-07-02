@@ -2,171 +2,264 @@ import unittest
 import json
 import tempfile
 import os
+import datetime
+from unittest.mock import patch
 from click.testing import CliRunner
 from collections import defaultdict
 
-# Assuming 'fsr.cli:cli' is the entry point for the main CLI application
-# and that 'fsr.core.data_loader.CongregationData' is the data structure used.
-# We need to be able to invoke the 'summary monthly-activity' command.
-# This might require access to the main 'cli' object from 'fsr.cli'.
-# For simplicity, if direct invocation of monthly_activity_report is possible and preferred for unit testing,
-# that would be an alternative, but testing via CLI runner is more end-to-end for commands.
+USER_PROVIDED_JSON_MAY_2025_STR = """
+{
+  "congregation": {"id": 28341, "name": "East Karenberg Area Congregation (#744)", "locales_id": 37, "timezones_id": 95, "countries_id": 58, "jworg_langcode": "FR", "locale": {"id": 37, "code": "fr", "name": "French", "symbol": "FR"}},
+  "publishers": [{"id": 1000001, "reportstobranch": false, "firstname": "Michael", "lastname": "Edwards"}, {"id": 1000002, "reportstobranch": false, "firstname": "Brenda", "lastname": "Moore"}, {"id": 1000003, "reportstobranch": false, "firstname": "Anna", "lastname": "Bishop"}, {"id": 1000004, "reportstobranch": false, "firstname": "Gail", "lastname": "Jones"}, {"id": 1000005, "reportstobranch": false, "firstname": "Dawn", "lastname": "Berry"}, {"id": 1000008, "reportstobranch": false, "firstname": "Kaitlin", "lastname": "Todd"}, {"id": 1000009, "reportstobranch": true, "firstname": "Troy", "lastname": "Bush"}, {"id": 1000010, "reportstobranch": true, "firstname": "Kiara", "lastname": "Cross"}, {"id": 1000006, "firstname": "Alicia", "lastname": "Fitzgerald", "reportstobranch": false}, {"id": 1000007, "firstname": "Sierra", "lastname": "Johnson", "reportstobranch": false}],
+  "reports": [
+    {"user": {"id": 1000001}, "month": 5, "year": 2025, "minutes": 2340, "pioneer": "Regular", "studies": 6, "has_reported_field_service": true},
+    {"user": {"id": 1000002}, "month": 5, "year": 2025, "minutes": 3300, "pioneer": "Regular", "studies": 6, "has_reported_field_service": true},
+    {"user": {"id": 1000003}, "month": 5, "year": 2025, "minutes": 3840, "pioneer": "Regular", "studies": 4, "has_reported_field_service": true},
+    {"user": {"id": 1000004}, "month": 5, "year": 2025, "minutes": 3960, "pioneer": "Regular", "studies": 5, "has_reported_field_service": true},
+    {"user": {"id": 1000005}, "month": 5, "year": 2025, "minutes": 3600, "pioneer": "Regular", "studies": 8, "has_reported_field_service": true},
+    {"user": {"id": 1000008}, "month": 5, "year": 2025, "minutes": 3000, "pioneer": "Regular", "studies": 3, "has_reported_field_service": true},
+    {"user": {"id": 1000009}, "month": 5, "year": 2025, "minutes": 1, "pioneer": null, "studies": 15, "has_reported_field_service": true},
+    {"user": {"id": 1000010}, "month": 5, "year": 2025, "minutes": 1, "pioneer": null, "studies": 14, "has_reported_field_service": true},
+    {"user": {"id": 1000009}, "year": 2024, "month": 12, "minutes": 1, "studies": 0, "has_reported_field_service": true, "pioneer": "Special"},
+    {"user": {"id": 1000010}, "year": 2025, "month": 1, "minutes": 1, "studies": 0, "has_reported_field_service": true, "pioneer": "Special"},
+    {"user": {"id": 1000001}, "year": 2025, "month": 2, "minutes": 1, "studies": 0, "has_reported_field_service": true, "pioneer": "Regular"},
+    {"user": {"id": 1000002}, "year": 2025, "month": 3, "minutes": 1, "studies": 0, "has_reported_field_service": true, "pioneer": "Regular"},
+    {"user": {"id": 1000006}, "year": 2025, "month": 4, "minutes": 1, "studies": 0, "has_reported_field_service": true, "pioneer": null},
+    {"user": {"id": 1000007}, "year": 2024, "month": 12, "minutes": 1, "studies": 0, "has_reported_field_service": true, "pioneer": null}
+  ],
+  "attendance": {"attendance": [{"month": "2025-05", "weAvg": 163}]}
+}
+"""
 
-# To test CLI:
-# from fsr.cli import cli # Or however your main CLI group is defined
+MAY_2026_MOCK_DATA_STR = """
+{
+  "congregation": {"id": 28342, "name": "Default Test Cong", "locale": {"id": 37, "code": "fr", "name": "French"}},
+  "publishers": [
+    {"id": "rp1", "reportstobranch": false, "firstname": "RP", "lastname": "One"}, {"id": "rp2", "reportstobranch": false, "firstname": "RP", "lastname": "Two"},
+    {"id": "ap1", "reportstobranch": false, "firstname": "AP", "lastname": "One"},
+    {"id": "pub1", "reportstobranch": false, "firstname": "Pub", "lastname": "One"}, {"id": "pub2", "reportstobranch": false, "firstname": "Pub", "lastname": "Two"}, {"id": "pub3", "reportstobranch": false, "firstname": "Pub", "lastname": "Three"},
+    {"id": "sp1", "reportstobranch": true, "firstname": "SP", "lastname": "One"},
+    {"id": "inactive1", "firstname": "Inactive", "lastname": "One"}
+  ],
+  "reports": [
+    {"user": {"id": "rp1"}, "year": 2026, "month": 5, "minutes": 3000, "studies": 5, "pioneer": "Regular", "has_reported_field_service": true},
+    {"user": {"id": "rp2"}, "year": 2026, "month": 5, "minutes": 3600, "studies": 4, "pioneer": "Regular", "has_reported_field_service": true},
+    {"user": {"id": "ap1"}, "year": 2026, "month": 5, "minutes": 1800, "studies": 3, "pioneer": "Auxiliary", "has_reported_field_service": true},
+    {"user": {"id": "pub1"}, "year": 2026, "month": 5, "minutes": 600, "studies": 2, "pioneer": null, "has_reported_field_service": true},
+    {"user": {"id": "pub2"}, "year": 2026, "month": 5, "minutes": 0, "studies": 1, "pioneer": null, "has_reported_field_service": true},
+    {"user": {"id": "pub3"}, "year": 2026, "month": 5, "minutes": 300, "studies": 0, "pioneer": null, "has_reported_field_service": true},
+    {"user": {"id": "sp1"}, "year": 2026, "month": 5, "minutes": 6000, "studies": 10, "pioneer": "Special", "has_reported_field_service": true}
+  ],
+  "attendance": {"attendance": [{"month": "2026-05", "weAvg": 100}]}
+}
+"""
 
-# For this test, we'll prepare a mock JSON file that can be loaded by CongregationData via the CLI's --json-file option.
+NO_ACTIVITY_JUL_2024_JSON_STR = """
+{
+  "congregation": {"id": 28344, "name": "No Activity July Cong", "locale": {"id": 37, "code": "fr", "name": "French"}},
+  "publishers": [], "reports": [],
+  "attendance": {"attendance": [{"month": "2024-07", "weAvg": 0}]}
+}
+"""
 
 class TestMonthlyActivityReport(unittest.TestCase):
+    USER_PROVIDED_JSON_MAY_2025_STR = USER_PROVIDED_JSON_MAY_2025_STR
+    MAY_2026_MOCK_DATA_STR = MAY_2026_MOCK_DATA_STR
+    NO_ACTIVITY_JUL_2024_JSON_STR = NO_ACTIVITY_JUL_2024_JSON_STR
+
     def setUp(self):
         self.runner = CliRunner()
-        self.maxDiff = None # Show full diffs
+        self.maxDiff = None
 
-        # Mock data for summaries - based on user's anonymized data and scenarios
-        self.mock_data_for_summaries = {
-            "congregation": {},
-            "publishers": [
-                {"id": "1000001", "firstname": "Michael", "lastname": "Edwards"},
-                {"id": "1000002", "firstname": "Stephanie", "lastname": "Roman"},
-                {"id": "1000003", "firstname": "Carol", "lastname": "Mitchell"},
-                {"id": "1000004", "firstname": "Carl", "lastname": "Smith"},
-                {"id": "1000005", "firstname": "Jason", "lastname": "Nguyen"},
-                {"id": "1000006", "firstname": "Gabriel", "lastname": "Williams"},
-                {"id": "1000007", "firstname": "Joel", "lastname": "Jenkins"},
-                {"id": "1000008", "firstname": "Jacqueline", "lastname": "Moore"},
-                {"id": "1000009", "firstname": "Crystal", "lastname": "Anderson"},
-                {"id": "1000010", "firstname": "Matthew", "lastname": "Jones"}
-            ],
-            "reports": [
-                # Month 1: 2026-08 (Active Month)
-                {"year": 2026, "month": 8, "user": {"id": "1000001"}, "pioneer": None, "has_reported_field_service": False, "minutes": None, "studies": None, "remarks": "Vacation"}, # Not counted in summary
-                {"year": 2026, "month": 8, "user": {"id": "1000002"}, "pioneer": "Auxiliary", "has_reported_field_service": True, "minutes": 3000, "studies": 5, "remarks": ""}, # AP: 50hr, 5st
-                {"year": 2026, "month": 8, "user": {"id": "1000003"}, "pioneer": None, "has_reported_field_service": True, "minutes": 60, "studies": 1, "remarks": ""},       # Pub: 1hr (not summed), 1st
-                {"year": 2026, "month": 8, "user": {"id": "1000004"}, "pioneer": "Publisher", "has_reported_field_service": True, "minutes": 120, "studies": 2, "remarks": "Good job"}, # Pub: 2hr (not summed), 2st
-                {"year": 2026, "month": 8, "user": {"id": "1000005"}, "pioneer": "Regular", "has_reported_field_service": True, "minutes": 600, "studies": None, "remarks": ""}, # RP: 10hr, 0st
-                {"year": 2026, "month": 8, "user": {"id": "1000006"}, "pioneer": "Special", "has_reported_field_service": True, "minutes": 0, "studies": 3}, # SP: 0hr, 3st. Active by studies.
-                {"year": 2026, "month": 8, "user": {"id": "1000007"}, "pioneer": "Auxiliary", "has_reported_field_service": True, "minutes": 30, "studies": 0}, # AP: active by minutes, but <1hr, 0 studies
-                {"year": 2026, "month": 8, "user": {"id": "1000008"}, "pioneer": None, "has_reported_field_service": True, "minutes": 0, "studies": 0, "remarks": "Reported, no activity"}, # Active by explicit True, but 0 activity.
+    def _run_cli_with_data(self, json_data_str, month_arg=None):
+        from fsr.cli import cli as fsr_cli
 
-
-                # Month 2: 2026-09 (No Activity Month for summary check)
-                # All reports have has_reported_field_service: False or no positive minutes/studies
-                {"year": 2026, "month": 9, "user": {"id": "1000001"}, "pioneer": None, "has_reported_field_service": False, "remarks": "Still out"},
-                {"year": 2026, "month": 9, "user": {"id": "1000002"}, "pioneer": "Auxiliary", "has_reported_field_service": True, "minutes": 0, "studies": 0},
-                {"year": 2026, "month": 9, "user": {"id": "1000003"}, "pioneer": None, "has_reported_field_service": False},
-            ]
-        }
-
-    def _run_summary_command(self, month_str):
-        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json") as tmp_json_file:
-            json.dump(self.mock_data_for_summaries, tmp_json_file)
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".json", encoding='utf-8') as tmp_json_file:
+            tmp_json_file.write(json_data_str)
             tmp_json_file_path = tmp_json_file.name
-        
-        # Assumes 'fsr' is callable via CLI after 'pip install -e .'
-        # The path might need to be ~/.local/bin/fsr if not in main PATH
-        cli_path = "~/.local/bin/fsr" 
-        if not os.path.exists(os.path.expanduser(cli_path)): # Fallback for environments where it might be in main path
-             cli_path = "fsr"
 
-        result = self.runner.invoke(
-            None, # We need to invoke the top-level CLI group if it's defined in fsr.cli.cli
-            [cli_path, '--json-file', tmp_json_file_path, 'summary', 'monthly-activity', '--month', month_str],
-            catch_exceptions=False, # Let exceptions propagate for debugging
-            prog_name="fsr" # Helps Click identify the command if fsr.cli.cli is a group
-        )
-        os.remove(tmp_json_file_path)
+        args = ['--json-file', tmp_json_file_path, 'summary', 'monthly-activity']
+        if month_arg:
+            args.extend(['--month', month_arg])
+
+        try:
+            result = self.runner.invoke(
+                fsr_cli, args, catch_exceptions=False, prog_name="fsr")
+        finally:
+            os.remove(tmp_json_file_path)
         return result
 
-    def test_monthly_activity_with_data(self):
-        """Test summary for a month with various activities."""
-        result = self._run_summary_command("2026-08")
+    @patch('fsr.reports.summaries.datetime')
+    def test_summary_new_format_may_2025(self, mock_datetime_summaries):
+        """Tests the May 2025 summary with the new French-labeled format and SP logic."""
+        mock_datetime_summaries.timedelta = datetime.timedelta
+        mock_datetime_summaries.datetime.now.return_value = datetime.datetime(2025, 6, 15, 10, 0, 0)
+        result = self._run_cli_with_data(self.USER_PROVIDED_JSON_MAY_2025_STR, "2025-05")
+        
         self.assertEqual(result.exit_code, 0, f"CLI Error: {result.output}")
-        output = result.output
+        output = result.output.replace("\r\n", "\n")
 
-        # Expected values for 2026-08 based on current summary logic
-        # Pwoklamatè ki pa pyonye (Non-Pioneers):
-        #   1000003: 1st (60 min, not counted for hours)
-        #   1000004: 2st (120 min, not counted for hours)
-        #   1000008: 0st, 0min (active by explicit True in CSV exports, but summary logic infers from min/studies)
-        #     -> Summary logic: Pub 1000003 (studies>0), Pub 1000004 (studies>0). Pub 1000008 has 0 min/studies, so NOT counted.
-        #   Count = 2, Total Studies = 1 + 2 = 3
-        self.assertIn("*Rapò pou Pwoklamatè Ki Pa Pyonye (08-2026)*", output)
-        self.assertIn("Total Etid: 3", output) # 1 (Carol) + 2 (Carl) = 3
-        self.assertIn("_Te gen 2 pwoklamatè ki pa pyonye ki te bay rapò pou mwa sa._", output)
+        expected_french_output = """Tous les proclamateurs actifs
+10
+Assistance moyenne à la réunion de week-end
+163
 
-        # Pyonye Oksilyè (Auxiliary Pioneers):
-        #   1000002: 50hr, 5st
-        #   1000007: 0hr (30min), 0st (active by positive minutes)
-        #   Count = 2, Total Hours = 50 + 0 = 50, Total Studies = 5 + 0 = 5
-        self.assertIn("*Rapò pou Pyonye Oksilyè (08-2026)*", output)
-        self.assertIn("Total Lè: 50", output)
-        self.assertIn("Total Etid: 5", output)
-        self.assertIn("_Te gen 2 pyonye oksilyè ki te bay rapò pou mwa sa._", output)
-        
-        # Pyonye Pèmanan (Regular Pioneers):
-        #   1000005: 10hr, 0st (studies is null)
-        #   Count = 1, Total Hours = 10, Total Studies = 0
-        self.assertIn("*Rapò pou Pyonye Pèmanan (08-2026)*", output)
-        self.assertIn("Total Lè: 10", output)
-        self.assertIn("Total Etid: 0", output)
-        self.assertIn("_Te gen 1 pyonye pèmanan ki te bay rapò pou mwa sa._", output)
+PROCLAMATEURS
+Nombre de fiches d’activité (S-4)
+0
+Cours bibliques
+0
 
-        # Pyonye Espesyal (Special Pioneers):
-        #   1000006: 0hr (0 min), 3st (active by studies)
-        #   Count = 1, Total Hours = 0, Total Studies = 3
-        self.assertIn("*Rapò pou Pyonye Espesyal (08-2026)*", output)
-        self.assertIn("Total Lè: 0", output)
-        self.assertIn("Total Etid: 3", output)
-        self.assertIn("_Te gen 1 pyonye espesyal ki te bay rapò pou mwa sa._", output)
+PIONNIERS AUXILIAIRES
+Nombre de fiches d’activité (S-4)
+0
+Heures
+0.00
+Cours bibliques
+0
 
-        # Total Congregation Studies: 3 (Pub) + 5 (AP) + 0 (RP) + 3 (SP) = 11
-        self.assertIn("Total Etid Kongregasyon an: 11", output)
-        
-        # Check that 1000001 (Vacation, has_reported_field_service: False) is not counted anywhere
-        # Check that 1000008 (0 min, 0 studies) is not counted as pwoklamatè
-        # (This is implicitly checked by the counts above)
+PIONNIERS PERMANENTS
+Nombre de fiches d’activité (S-4)
+6
+Heures
+334.00
+Cours bibliques
+32""".strip()
 
-    def test_monthly_activity_no_activity(self):
-        """Test summary for a month with no qualifying activity."""
-        result = self._run_summary_command("2026-09")
+        actual_report_lines = []
+        report_content_started = False
+        for line in output.split('\n'):
+            if line.strip() == "Tous les proclamateurs actifs": report_content_started = True
+            if not report_content_started: continue
+            if not (line.startswith("Info:") or \
+                    line.startswith("Rezime Rapò Aktivite Mansyèl") or \
+                    line.startswith("Pou Mwa:") or \
+                    line.strip() == "-----------------------------"):
+                # Keep "Rapò kreye:" for now, or decide to strip it too
+                actual_report_lines.append(line)
+
+        # Strip "Rapò kreye:" if present before final comparison
+        final_actual_lines = [line for line in actual_report_lines if not line.startswith("Rapò kreye:")]
+        actual_report_processed = "\n".join(final_actual_lines).strip()
+
+        self.assertEqual(actual_report_processed, expected_french_output,
+                         f"Output does not match expected French summary for May 2025.\nExpected:\n{expected_french_output}\n\nActual:\n{actual_report_processed}")
+
+    @patch('fsr.reports.summaries.datetime')
+    def test_summary_new_format_default_month(self, mock_datetime_summaries):
+        """Tests the default month summary (May 2026) with the new French-labeled format."""
+        mock_datetime_summaries.timedelta = datetime.timedelta
+        mock_datetime_summaries.datetime.now.return_value = datetime.datetime(2026, 6, 15, 10, 0, 0)
+        expected_month_str = "2026-05"
+        result = self._run_cli_with_data(self.MAY_2026_MOCK_DATA_STR)
+
         self.assertEqual(result.exit_code, 0, f"CLI Error: {result.output}")
-        output = result.output
-        
-        # For 2026-09:
-        # 1000001: has_reported_field_service: False -> ignored
-        # 1000002: AP, 0 min, 0 studies -> not counted as active by summary logic (needs >0 min or >0 studies)
-        # 1000003: has_reported_field_service: False -> ignored
-        # So, all counts should be 0.
+        output = result.output.replace("\r\n", "\n")
+        self.assertIn(f"Info: --month not provided, defaulting to previous month ({expected_month_str}).", output)
 
-        self.assertIn("*Rapò pou Pwoklamatè Ki Pa Pyonye (09-2026)*", output)
-        self.assertIn("Total Etid: 0", output)
-        self.assertIn("_Te gen 0 pwoklamatè ki pa pyonye ki te bay rapò pou mwa sa._", output)
+        expected_french_output = """Tous les proclamateurs actifs
+7
+Assistance moyenne à la réunion de week-end
+100
 
-        self.assertIn("*Rapò pou Pyonye Oksilyè (09-2026)*", output)
-        self.assertIn("Total Lè: 0", output)
-        self.assertIn("Total Etid: 0", output)
-        self.assertIn("_Te gen 0 pyonye oksilyè ki te bay rapò pou mwa sa._", output)
-        
-        self.assertIn("*Rapò pou Pyonye Pèmanan (09-2026)*", output)
-        self.assertIn("Total Lè: 0", output)
-        self.assertIn("Total Etid: 0", output)
-        self.assertIn("_Te gen 0 pyonye pèmanan ki te bay rapò pou mwa sa._", output)
+PROCLAMATEURS
+Nombre de fiches d’activité (S-4)
+3
+Cours bibliques
+3
 
-        self.assertIn("*Rapò pou Pyonye Espesyal (09-2026)*", output)
-        self.assertIn("Total Lè: 0", output)
-        self.assertIn("Total Etid: 0", output)
-        self.assertIn("_Te gen 0 pyonye espesyal ki te bay rapò pou mwa sa._", output)
-        
-        self.assertIn("Total Etid Kongregasyon an: 0", output)
-        self.assertIn("Note: Pa gen rapò ki disponib pou mwa 2026-09.", output)
+PIONNIERS AUXILIAIRES
+Nombre de fiches d’activité (S-4)
+1
+Heures
+30.00
+Cours bibliques
+3
 
-if __name__ == '__main__':
-    # This allows running the tests directly if the fsr module is in PYTHONPATH
-    # For the agent, direct execution isn't the primary concern, but good for local testing.
-    # Need to ensure fsr.cli can be imported or use a different way to get 'cli' group.
-    # The CliRunner().invoke(None, ...) with full path to fsr script is more robust in this env.
-    
-    # To make fsr.cli.cli available for CliRunner().invoke(cli, ...)
-    # we would need to ensure the path is set up, or the package is installed.
-    # The current _run_summary_command tries to handle this.
-    unittest.main(argv=['first-arg-is-ignored'], exit=False)
+PIONNIERS PERMANENTS
+Nombre de fiches d’activité (S-4)
+2
+Heures
+110.00
+Cours bibliques
+9""".strip()
+
+        actual_report_lines = []
+        report_content_started = False
+        for line in output.split('\n'):
+            if line.strip() == "Tous les proclamateurs actifs": report_content_started = True
+            if not report_content_started: continue # Skip lines before this marker
+            if not (line.startswith("Info:") or \
+                    line.startswith("Rezime Rapò Aktivite Mansyèl") or \
+                    line.startswith("Pou Mwa:") or \
+                    line.strip() == "-----------------------------"):
+                actual_report_lines.append(line)
+
+        final_actual_lines = [line for line in actual_report_lines if not line.startswith("Rapò kreye:")]
+        actual_report_processed = "\n".join(final_actual_lines).strip()
+
+        self.assertEqual(actual_report_processed, expected_french_output,
+                            f"Output does not match expected French summary for default month May 2026.\nExpected:\n{expected_french_output}\n\nActual:\n{actual_report_processed}")
+
+    @patch('fsr.reports.summaries.datetime')
+    def test_summary_new_format_no_activity_default_month(self, mock_datetime_summaries):
+        """Tests the default month with no activity, expecting French-labeled output."""
+        mock_datetime_summaries.timedelta = datetime.timedelta
+        mock_datetime_summaries.datetime.now.return_value = datetime.datetime(2024, 8, 15, 10, 0, 0)
+        expected_month_str = "2024-07"
+        result = self._run_cli_with_data(self.NO_ACTIVITY_JUL_2024_JSON_STR)
+
+        self.assertEqual(result.exit_code, 0, f"CLI Error: {result.output}")
+        output = result.output.replace("\r\n", "\n")
+        self.assertIn(f"Info: --month not provided, defaulting to previous month ({expected_month_str}).", output)
+
+        expected_french_output = """Tous les proclamateurs actifs
+0
+Assistance moyenne à la réunion de week-end
+N/A
+
+PROCLAMATEURS
+Nombre de fiches d’activité (S-4)
+0
+Cours bibliques
+0
+
+PIONNIERS AUXILIAIRES
+Nombre de fiches d’activité (S-4)
+0
+Heures
+0.00
+Cours bibliques
+0
+
+PIONNIERS PERMANENTS
+Nombre de fiches d’activité (S-4)
+0
+Heures
+0.00
+Cours bibliques
+0
+
+Note: Aucune donnée d'activité disponible pour le mois 2024-07.""".strip()
+
+        actual_report_lines = []
+        report_content_started = False
+        for line in output.split('\n'):
+            if line.strip() == "Tous les proclamateurs actifs": report_content_started = True
+            if not report_content_started: continue
+            if not (line.startswith("Info:") or \
+                    line.startswith("Rezime Rapò Aktivite Mansyèl") or \
+                    line.startswith("Pou Mwa:") or \
+                    line.strip() == "-----------------------------"):
+                actual_report_lines.append(line)
+
+        final_actual_lines = [line for line in actual_report_lines if not line.startswith("Rapò kreye:")]
+        actual_report_processed = "\n".join(final_actual_lines).strip()
+
+        self.assertEqual(actual_report_processed, expected_french_output,
+                             f"Output does not match expected French no-activity summary for {expected_month_str}.\nExpected:\n{expected_french_output}\n\nActual:\n{actual_report_processed}")
+
+# Removed if __name__ == '__main__': block
+# Removed old test_monthly_activity_no_activity as it's replaced by test_summary_new_format_no_activity_default_month
+# Removed old _run_summary_command as it's replaced by _run_cli_with_data
+# Removed self.mock_data_for_summaries as it's no longer used by these tests.
