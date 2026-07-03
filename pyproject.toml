@@ -39,3 +39,6 @@ fsr = "fsr.cli:cli"
 
 [tool.setuptools.packages.find]
 include = ["fsr", "fsr.*"]
+
+[tool.setuptools.package-data]
+fsr = ["data/*.json"]
