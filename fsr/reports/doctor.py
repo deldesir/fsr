@@ -78,8 +78,14 @@ def doctor(s34_db: str):
             _warn('S-34 corpus', f"unreadable ({e})",
                   'public-talk outline numbers will be 0')
     else:
-        _warn('S-34 corpus', f"{s34_db} not found",
-              'public-talk outline numbers will be 0 (titles still export)')
+        from fsr.reports.programs import _bundled_titles
+        bundled = _bundled_titles('51')
+        if bundled:
+            _ok('S-34 titles', f"bundled index ({len(bundled)} titles) — "
+                f"corpus at {s34_db} not found, fallback active")
+        else:
+            _warn('S-34 corpus', f"{s34_db} not found",
+                  'public-talk outline numbers will be 0 (titles still export)')
 
     out_dir = os.getcwd()
     writable = os.access(out_dir, os.W_OK)

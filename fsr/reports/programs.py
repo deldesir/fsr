@@ -83,6 +83,21 @@ def _default_out(stem: str) -> str:
         os.getcwd(), f"NWScheduler_{stem}_{datetime.now():%Y%m%d}.csv")
 
 
+def _bundled_titles(lang_id: str):
+    """(number, folded_title) pairs from the packaged title index."""
+    import importlib.resources as resources
+    import json as _json
+
+    try:
+        data = _json.loads(
+            resources.files('fsr').joinpath('data/s34_titles.json')
+            .read_text(encoding='utf-8'))
+    except (FileNotFoundError, OSError, ValueError):
+        return []
+    titles = data.get('titles', {}).get(str(lang_id), {})
+    return [(int(num), _fold(title)) for num, title in titles.items()]
+
+
 class OutlineResolver:
     """Talk title -> S-34 outline number via a jwlinker corpus database.
 
@@ -92,6 +107,7 @@ class OutlineResolver:
 
     def __init__(self, db_path: Optional[str], lang_id: str):
         self.titles = []
+        self.source = 'none'
         if db_path and Path(db_path).exists():
             conn = sqlite3.connect(db_path)
             rows = conn.execute(
@@ -104,6 +120,18 @@ class OutlineResolver:
                 m = re.match(r'(?:No\s+)?(\d+)[.\s]\s*(.*)', name)
                 if m:
                     self.titles.append((int(m.group(1)), _fold(m.group(2))))
+            if self.titles:
+                self.source = 'corpus'
+        if not self.titles:
+            # Bundled fallback: a titles-only index shipped with the package,
+            # so outline numbers resolve on machines without the corpus
+            # (e.g. a laptop running the monthly export).
+            self.titles = _bundled_titles(lang_id)
+            if self.titles:
+                self.source = 'bundled'
+                click.echo(click.style(
+                    'Info: resolving outline numbers from the bundled S-34 '
+                    'title index (no corpus database found).', fg='blue'))
 
     def resolve(self, title: str) -> int:
         want = _fold(title)
