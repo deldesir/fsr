@@ -416,14 +416,18 @@ def export_all(ctx: click.Context, out_dir: str, docx_path: Optional[str],
         skipped.append(('midweek-program', 'no program .docx found'))
         skipped.append(('public-talks', 'no program .docx found'))
 
-    if have_json and docx_found:
+    if have_json:
+        # An explicit --docx pins the unified export to that one file;
+        # otherwise let it auto-detect and MERGE every recent program docx
+        # (Hourglass exports one month per file). A missing docx surfaces as
+        # a skip via the ClickException, like the other artifacts.
         run('organized (unified JSON)', export_organized,
-            docx_path=docx_found,
+            docx_paths=(docx_path,) if docx_path else (),
             out_path=os.path.join(out_dir, f"organized-unified_{stamp}.json"),
             s34_db=s34_db, s34_language=s34_language)
     else:
         skipped.append(('organized (unified JSON)',
-                        'needs BOTH the Hourglass JSON and the program .docx'))
+                        'needs the Hourglass JSON (and a program .docx)'))
 
     click.echo('')
     click.echo(click.style(
