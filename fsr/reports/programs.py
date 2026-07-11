@@ -335,6 +335,18 @@ def export_organized(ctx: click.Context, docx_paths,
     weekend = sorted(weekend_by_week.values(), key=lambda t: t['week_of'])
     midweek = sorted(midweek_by_date.values(), key=lambda m: m['date'])
 
+    # Surface every S-34 resolution failure loudly — an unresolved title
+    # imports as a numberless talk, which every downstream surface (talk
+    # prep, radar, schedules) silently skips. Fix the title at the source
+    # (Hourglass) or set the talk directly in Organized.
+    for t in weekend:
+        if not t['outline_number']:
+            click.echo(click.style(
+                f"Warning: no S-34 outline number for {t['week_of']} "
+                f"(speaker: {t['speaker'] or '?'}; title: "
+                f"'{t['title'] or 'MISSING'}') — talk imports without a "
+                f"number.", fg="yellow"))
+
     unified['program'] = {
         'generated_at': datetime.now().isoformat(timespec='seconds'),
         'source_docx': ', '.join(
