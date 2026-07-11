@@ -34,7 +34,7 @@ import click
 from fsr.core.docx_parser import (
     docx_rows, parse_midweek, parse_weekend, split_meetings, _fold,
 )
-from fsr.core.file_finder import find_docx_file
+from fsr.core.file_finder import find_docx_file, find_docx_files
 
 DEFAULT_S34_DB = '/library/jwlinker/jw_library.db'
 
@@ -50,6 +50,24 @@ def _resolve_docx(docx_path: Optional[str]) -> str:
             "Pass --docx explicitly.")
     click.echo(click.style(f"Info: using program document: {found}", fg="green"))
     return found
+
+
+def _resolve_docxs(docx_paths) -> list[str]:
+    """All program documents to merge, oldest export first (so overlapping
+    weeks resolve to the most recently exported data). Hourglass exports one
+    month per .docx — merging the recent ones is what covers a quarter."""
+    if docx_paths:
+        return list(docx_paths)
+    found = find_docx_files()
+    if not found:
+        raise click.ClickException(
+            "No program .docx found (looked for 'Tout pwogram*.docx' in the "
+            "current directory, Downloads and /library/hourglass). "
+            "Pass --docx explicitly (repeatable).")
+    ordered = list(reversed(found))
+    for p in ordered:
+        click.echo(click.style(f"Info: using program document: {p}", fg="green"))
+    return ordered
 
 
 def _load_meetings(docx_path: str):
@@ -240,9 +258,10 @@ def export_public_talks(docx_path: Optional[str], csv_filepath: Optional[str],
 
 
 @click.command('organized')
-@click.option('--docx', 'docx_path', type=click.Path(exists=True, dir_okay=False),
-              default=None,
-              help="Hourglass 'Tout pwogram ansanm' .docx (auto-detected if omitted).")
+@click.option('--docx', 'docx_paths', type=click.Path(exists=True, dir_okay=False),
+              multiple=True,
+              help="Hourglass 'Tout pwogram ansanm' .docx — repeatable; all "
+                   "recent ones are auto-detected and merged if omitted.")
 @click.option('--out', 'out_path', type=click.Path(dir_okay=False), default=None,
               help='Output JSON path (default: auto-generated).')
 @click.option('--s34-db', default=DEFAULT_S34_DB, show_default=True,
@@ -250,7 +269,7 @@ def export_public_talks(docx_path: Optional[str], csv_filepath: Optional[str],
 @click.option('--s34-language', default='51', show_default=True,
               help='MEPS language id for outline matching (51 = Haitian Creole).')
 @click.pass_context
-def export_organized(ctx: click.Context, docx_path: Optional[str],
+def export_organized(ctx: click.Context, docx_paths,
                      out_path: Optional[str], s34_db: str, s34_language: str):
     """Export ONE unified JSON for Organized: Hourglass data + the program.
 
@@ -267,42 +286,59 @@ def export_organized(ctx: click.Context, docx_path: Optional[str],
         raise click.ClickException(
             'The unified export needs the Hourglass JSON — none was found. '
             'Pass it with the top-level --json-file option.')
-    docx_path = _resolve_docx(docx_path)
-    meetings = _load_meetings(docx_path)
+    docx_paths = _resolve_docxs(docx_paths)
     resolver = OutlineResolver(s34_db, s34_language)
 
     with open(json_file_path, encoding='utf-8') as f:
         unified = _json.load(f)
 
-    weekend, midweek = [], []
-    for meeting in meetings:
-        week_of = _monday(meeting['date']).strftime('%Y/%m/%d')
-        if meeting['date'].weekday() == 6:
-            talk = parse_weekend(meeting)
-            if not talk:
-                continue  # convention/assembly week
-            weekend.append({
-                'date': talk['date'].strftime('%Y/%m/%d'),
-                'week_of': week_of,
-                'title': talk['title'],
-                'outline_number': resolver.resolve(talk['title']),
-                'speaker': talk['speaker'],
-                'speaker_cong': talk['speaker_cong'],
-                'chairman': talk['chairman'],
-                'wt_reader': talk['wt_reader'],
-            })
-        else:
-            parts = parse_midweek(meeting)
-            if parts:
-                midweek.append({
-                    'date': meeting['date'].strftime('%Y/%m/%d'),
+    # Merge every document, keyed by week/date — a week present in two
+    # exports keeps the version from the LATER export (docx_paths is oldest
+    # first), so re-exports with corrections win over stale ones.
+    weekend_by_week: dict[str, dict] = {}
+    midweek_by_date: dict[str, dict] = {}
+    for docx_path in docx_paths:
+        meetings = split_meetings(docx_rows(docx_path))
+        if not meetings:
+            click.echo(click.style(
+                f"Warning: no meetings found in '{docx_path}' — skipping.",
+                fg="yellow"))
+            continue
+        for meeting in meetings:
+            week_of = _monday(meeting['date']).strftime('%Y/%m/%d')
+            if meeting['date'].weekday() == 6:
+                talk = parse_weekend(meeting)
+                if not talk:
+                    continue  # convention/assembly week
+                weekend_by_week[week_of] = {
+                    'date': talk['date'].strftime('%Y/%m/%d'),
                     'week_of': week_of,
-                    'parts': parts,
-                })
+                    'title': talk['title'],
+                    'outline_number': resolver.resolve(talk['title']),
+                    'speaker': talk['speaker'],
+                    'speaker_cong': talk['speaker_cong'],
+                    'chairman': talk['chairman'],
+                    'wt_reader': talk['wt_reader'],
+                }
+            else:
+                parts = parse_midweek(meeting)
+                if parts:
+                    midweek_by_date[meeting['date'].strftime('%Y/%m/%d')] = {
+                        'date': meeting['date'].strftime('%Y/%m/%d'),
+                        'week_of': week_of,
+                        'parts': parts,
+                    }
+    if not weekend_by_week and not midweek_by_date:
+        raise click.ClickException(
+            "No meetings found in any program document — are these the "
+            "Hourglass 'all programs' exports?")
+    weekend = sorted(weekend_by_week.values(), key=lambda t: t['week_of'])
+    midweek = sorted(midweek_by_date.values(), key=lambda m: m['date'])
 
     unified['program'] = {
         'generated_at': datetime.now().isoformat(timespec='seconds'),
-        'source_docx': os.path.basename(docx_path),
+        'source_docx': ', '.join(
+            os.path.basename(p) for p in docx_paths),
         'weekend': weekend,
         'midweek': midweek,
     }

@@ -186,16 +186,19 @@ def find_csv_file() -> Optional[str]:
     )
 
 
-def find_docx_file() -> Optional[str]:
+def find_docx_files(limit: int = 6) -> list[str]:
     """
-    Finds the Hourglass "Tout pwogram ansanm" program document.
+    Finds Hourglass "Tout pwogram ansanm" program documents.
 
-    Searches for "Tout pwogram*.docx" in the current directory, the user's
-    Downloads folder, and /library/hourglass (the IIAB drop directory),
-    selecting the most recently modified match.
+    Hourglass exports the program ONE MONTH per .docx, so covering more than
+    a month means combining several exports. Searches for
+    "Tout pwogram*.docx" in the current directory, the user's Downloads
+    folder, and /library/hourglass (the IIAB drop directory), returning up to
+    `limit` matches, most recently modified first. Duplicate basenames across
+    directories keep only the newest copy.
 
     Returns:
-        The absolute path to the selected .docx file, or None if not found.
+        Absolute paths, newest first (empty list if none found).
     """
     home_dir = Path.home()
     download_dirs_names = ["Downloads", "downloads", "Téléchargements", "téléchargements"]
@@ -213,7 +216,19 @@ def find_docx_file() -> Optional[str]:
             f for f in p_dir.glob("Tout pwogram*.docx") if f.is_file()
         )
 
-    if not candidates:
-        return None
-    latest = max(candidates, key=lambda f: f.stat().st_mtime)
-    return str(latest.resolve())
+    by_name: dict[str, Path] = {}
+    for f in candidates:
+        prev = by_name.get(f.name)
+        if prev is None or f.stat().st_mtime > prev.stat().st_mtime:
+            by_name[f.name] = f
+    ordered = sorted(
+        by_name.values(), key=lambda f: f.stat().st_mtime, reverse=True
+    )
+    return [str(f.resolve()) for f in ordered[:limit]]
+
+
+def find_docx_file() -> Optional[str]:
+    """The single most recently modified program document (see
+    find_docx_files)."""
+    found = find_docx_files(limit=1)
+    return found[0] if found else None
