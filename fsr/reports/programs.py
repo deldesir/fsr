@@ -79,6 +79,30 @@ def _load_meetings(docx_path: str):
     return meetings
 
 
+def _merged_meetings(docx_paths: list[str]):
+    """Meetings from every program document, merged by meeting date.
+
+    Hourglass exports one month per .docx; a date present in two exports
+    keeps the LATER export's version (docx_paths is oldest first), so
+    re-exports with corrections win over stale ones.
+    """
+    by_date = {}
+    for docx_path in docx_paths:
+        meetings = split_meetings(docx_rows(docx_path))
+        if not meetings:
+            click.echo(click.style(
+                f"Warning: no meetings found in '{docx_path}' — skipping.",
+                fg="yellow"))
+            continue
+        for meeting in meetings:
+            by_date[meeting['date']] = meeting
+    if not by_date:
+        raise click.ClickException(
+            "No meetings found in any program document — are these the "
+            "Hourglass 'all programs' exports?")
+    return sorted(by_date.values(), key=lambda m: m['date'])
+
+
 def _monday(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
@@ -163,15 +187,15 @@ class OutlineResolver:
 
 
 @click.command('midweek-program')
-@click.option('--docx', 'docx_path', type=click.Path(exists=True, dir_okay=False),
-              default=None,
-              help="Hourglass 'Tout pwogram ansanm' .docx (auto-detected if omitted).")
+@click.option('--docx', 'docx_paths', type=click.Path(exists=True, dir_okay=False),
+              multiple=True,
+              help="Hourglass 'Tout pwogram ansanm' .docx — repeatable; all "
+                   "recent ones are auto-detected and merged if omitted.")
 @click.option('--csv-file', 'csv_filepath', type=click.Path(dir_okay=False),
               default=None, help='Output CSV path (default: auto-generated).')
-def export_midweek_program(docx_path: Optional[str], csv_filepath: Optional[str]):
+def export_midweek_program(docx_paths, csv_filepath: Optional[str]):
     """Export the midweek (LNTNF) program to the NWS import CSV."""
-    docx_path = _resolve_docx(docx_path)
-    meetings = _load_meetings(docx_path)
+    meetings = _merged_meetings(_resolve_docxs(docx_paths))
 
     rows = []
     for meeting in meetings:
@@ -199,20 +223,20 @@ def export_midweek_program(docx_path: Optional[str], csv_filepath: Optional[str]
 
 
 @click.command('public-talks')
-@click.option('--docx', 'docx_path', type=click.Path(exists=True, dir_okay=False),
-              default=None,
-              help="Hourglass 'Tout pwogram ansanm' .docx (auto-detected if omitted).")
+@click.option('--docx', 'docx_paths', type=click.Path(exists=True, dir_okay=False),
+              multiple=True,
+              help="Hourglass 'Tout pwogram ansanm' .docx — repeatable; all "
+                   "recent ones are auto-detected and merged if omitted.")
 @click.option('--csv-file', 'csv_filepath', type=click.Path(dir_okay=False),
               default=None, help='Output CSV path (default: auto-generated).')
 @click.option('--s34-db', default=DEFAULT_S34_DB, show_default=True,
               help='jwlinker corpus DB for resolving outline numbers from titles.')
 @click.option('--s34-language', default='51', show_default=True,
               help='MEPS language id for outline matching (51 = Haitian Creole).')
-def export_public_talks(docx_path: Optional[str], csv_filepath: Optional[str],
+def export_public_talks(docx_paths, csv_filepath: Optional[str],
                         s34_db: str, s34_language: str):
     """Export the weekend public-talk program to the NWS import CSV."""
-    docx_path = _resolve_docx(docx_path)
-    meetings = _load_meetings(docx_path)
+    meetings = _merged_meetings(_resolve_docxs(docx_paths))
     resolver = OutlineResolver(s34_db, s34_language)
 
     fieldnames = ['Date', 'Congregation', 'PublicSpeaker', 'OutlineNumber',
@@ -292,48 +316,31 @@ def export_organized(ctx: click.Context, docx_paths,
     with open(json_file_path, encoding='utf-8') as f:
         unified = _json.load(f)
 
-    # Merge every document, keyed by week/date — a week present in two
-    # exports keeps the version from the LATER export (docx_paths is oldest
-    # first), so re-exports with corrections win over stale ones.
-    weekend_by_week: dict[str, dict] = {}
-    midweek_by_date: dict[str, dict] = {}
-    for docx_path in docx_paths:
-        meetings = split_meetings(docx_rows(docx_path))
-        if not meetings:
-            click.echo(click.style(
-                f"Warning: no meetings found in '{docx_path}' — skipping.",
-                fg="yellow"))
-            continue
-        for meeting in meetings:
-            week_of = _monday(meeting['date']).strftime('%Y/%m/%d')
-            if meeting['date'].weekday() == 6:
-                talk = parse_weekend(meeting)
-                if not talk:
-                    continue  # convention/assembly week
-                weekend_by_week[week_of] = {
-                    'date': talk['date'].strftime('%Y/%m/%d'),
+    weekend, midweek = [], []
+    for meeting in _merged_meetings(docx_paths):
+        week_of = _monday(meeting['date']).strftime('%Y/%m/%d')
+        if meeting['date'].weekday() == 6:
+            talk = parse_weekend(meeting)
+            if not talk:
+                continue  # convention/assembly week
+            weekend.append({
+                'date': talk['date'].strftime('%Y/%m/%d'),
+                'week_of': week_of,
+                'title': talk['title'],
+                'outline_number': resolver.resolve(talk['title']),
+                'speaker': talk['speaker'],
+                'speaker_cong': talk['speaker_cong'],
+                'chairman': talk['chairman'],
+                'wt_reader': talk['wt_reader'],
+            })
+        else:
+            parts = parse_midweek(meeting)
+            if parts:
+                midweek.append({
+                    'date': meeting['date'].strftime('%Y/%m/%d'),
                     'week_of': week_of,
-                    'title': talk['title'],
-                    'outline_number': resolver.resolve(talk['title']),
-                    'speaker': talk['speaker'],
-                    'speaker_cong': talk['speaker_cong'],
-                    'chairman': talk['chairman'],
-                    'wt_reader': talk['wt_reader'],
-                }
-            else:
-                parts = parse_midweek(meeting)
-                if parts:
-                    midweek_by_date[meeting['date'].strftime('%Y/%m/%d')] = {
-                        'date': meeting['date'].strftime('%Y/%m/%d'),
-                        'week_of': week_of,
-                        'parts': parts,
-                    }
-    if not weekend_by_week and not midweek_by_date:
-        raise click.ClickException(
-            "No meetings found in any program document — are these the "
-            "Hourglass 'all programs' exports?")
-    weekend = sorted(weekend_by_week.values(), key=lambda t: t['week_of'])
-    midweek = sorted(midweek_by_date.values(), key=lambda m: m['date'])
+                    'parts': parts,
+                })
 
     # Surface every S-34 resolution failure loudly — an unresolved title
     # imports as a numberless talk, which every downstream surface (talk
@@ -393,10 +400,11 @@ def export_all(ctx: click.Context, out_dir: str, docx_path: Optional[str],
     os.makedirs(out_dir, exist_ok=True)
     stamp = f"{datetime.now():%Y%m%d}"
     have_json = bool(ctx.obj and ctx.obj.get('cong_data'))
-    try:
-        docx_found = _resolve_docx(docx_path)
-    except click.ClickException:
-        docx_found = None
+    # An explicit --docx pins every program artifact to that one file;
+    # otherwise each export auto-detects and MERGES every recent program
+    # docx (Hourglass exports one month per file). A missing docx surfaces
+    # as a skip via the ClickException, like the other artifacts.
+    docx_args = (docx_path,) if docx_path else ()
 
     made, skipped = [], []
 
@@ -414,27 +422,19 @@ def export_all(ctx: click.Context, out_dir: str, docx_path: Optional[str],
     else:
         skipped.append(('field-service', 'no Hourglass JSON found'))
 
-    if docx_found:
-        run('midweek-program', export_midweek_program,
-            docx_path=docx_found,
-            csv_filepath=os.path.join(
-                out_dir, f"NWScheduler_LNTNF_Pwogram_{stamp}.csv"))
-        run('public-talks', export_public_talks,
-            docx_path=docx_found,
-            csv_filepath=os.path.join(
-                out_dir, f"NWScheduler_Diskou_Piblik_{stamp}.csv"),
-            s34_db=s34_db, s34_language=s34_language)
-    else:
-        skipped.append(('midweek-program', 'no program .docx found'))
-        skipped.append(('public-talks', 'no program .docx found'))
+    run('midweek-program', export_midweek_program,
+        docx_paths=docx_args,
+        csv_filepath=os.path.join(
+            out_dir, f"NWScheduler_LNTNF_Pwogram_{stamp}.csv"))
+    run('public-talks', export_public_talks,
+        docx_paths=docx_args,
+        csv_filepath=os.path.join(
+            out_dir, f"NWScheduler_Diskou_Piblik_{stamp}.csv"),
+        s34_db=s34_db, s34_language=s34_language)
 
     if have_json:
-        # An explicit --docx pins the unified export to that one file;
-        # otherwise let it auto-detect and MERGE every recent program docx
-        # (Hourglass exports one month per file). A missing docx surfaces as
-        # a skip via the ClickException, like the other artifacts.
         run('organized (unified JSON)', export_organized,
-            docx_paths=(docx_path,) if docx_path else (),
+            docx_paths=docx_args,
             out_path=os.path.join(out_dir, f"organized-unified_{stamp}.json"),
             s34_db=s34_db, s34_language=s34_language)
     else:
